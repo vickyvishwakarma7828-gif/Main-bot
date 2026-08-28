@@ -329,6 +329,21 @@ DEFAULT_SETTINGS = {
         "currency": "₹",
         "usd_rate": 90.0,
     },
+    "labels": {
+        "shop": "Shop",
+        "profile": "My Profile",
+        "balance": "Add Balance",
+        "orders": "My Orders",
+        "referral": "Referral",
+        "support": "Support",
+        "lucky": "Lucky",
+        "download": "Download Files",
+    },
+    "custom_ui": {
+        "button_styles": {},
+        "button_emojis": {},
+        "text_emojis": {},
+    },
     "messages": {
         "welcome_title": "WELCOME TO VICKY X MODE SHOP",
         "choose_menu": "Select An Option From The Menu Below :",
@@ -380,7 +395,27 @@ def load_settings():
 
 SETTINGS = load_settings()
 
+def apply_custom_ui_settings():
+    ui = SETTINGS.get("custom_ui", {}) or {}
+    saved_styles = ui.get("button_styles", {}) or {}
+    saved_button_emojis = ui.get("button_emojis", {}) or {}
+    saved_text_emojis = ui.get("text_emojis", {}) or {}
+    for key, value in saved_styles.items():
+        if value in STYLE_VALUES:
+            BUTTON_STYLES[key] = value
+    for key, value in saved_button_emojis.items():
+        if key in BUTTON_EMOJI_IDS:
+            BUTTON_EMOJI_IDS[key] = str(value)
+    for key, value in saved_text_emojis.items():
+        if key in TEXT_EMOJI_IDS:
+            TEXT_EMOJI_IDS[key] = str(value)
+
+apply_custom_ui_settings()
+
 def save_settings():
+    SETTINGS.setdefault("custom_ui", {})["button_styles"] = dict(BUTTON_STYLES)
+    SETTINGS.setdefault("custom_ui", {})["button_emojis"] = dict(BUTTON_EMOJI_IDS)
+    SETTINGS.setdefault("custom_ui", {})["text_emojis"] = dict(TEXT_EMOJI_IDS)
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(SETTINGS, f, indent=2, ensure_ascii=False)
 
@@ -502,10 +537,13 @@ def button_emoji(key, fallback="🔹"):
     return custom_emoji(BUTTON_EMOJI_IDS.get(key, ""), fallback)
 
 def get_button_style(callback_data="", text="", explicit=None):
-    if explicit in STYLE_VALUES:
-        return explicit
     cb = str(callback_data or "")
     txt = str(text or "")
+    # Admin-selected style wins for buttons that have a configurable key.
+    if cb in BUTTON_STYLES and BUTTON_STYLES.get(cb) in STYLE_VALUES:
+        return BUTTON_STYLES[cb]
+    if explicit in STYLE_VALUES:
+        return explicit
     if cb.startswith("buy_"):
         return "success"
     if cb.startswith("oos_"):
@@ -621,20 +659,21 @@ def duration_text(duration):
 
 def main_menu_markup():
     m = InlineKeyboardMarkup()
-    m.add(make_button("Shop", callback_data="btn_store", style="success", emoji_key="btn_store"))
+    label = lambda key, fallback: get_setting("labels", key, fallback)
+    m.add(make_button(label("shop", "Shop"), callback_data="btn_store", emoji_key="btn_store"))
     m.row(
-        make_button("My Profile", callback_data="btn_profile", style="success", emoji_key="btn_profile"),
-        make_button("Add Balance", callback_data="btn_balance", style="success", emoji_key="btn_balance"),
+        make_button(label("profile", "My Profile"), callback_data="btn_profile", emoji_key="btn_profile"),
+        make_button(label("balance", "Add Balance"), callback_data="btn_balance", emoji_key="btn_balance"),
     )
     m.row(
-        make_button("My Orders", callback_data="btn_history", style="primary", emoji_key="btn_history"),
-        make_button("Referral", callback_data="btn_referral", style="primary", emoji_key="btn_referral"),
+        make_button(label("orders", "My Orders"), callback_data="btn_history", emoji_key="btn_history"),
+        make_button(label("referral", "Referral"), callback_data="btn_referral", emoji_key="btn_referral"),
     )
     m.row(
-        make_button("Support", callback_data="btn_support", style="success", emoji_key="btn_support"),
-        make_button("Lucky", callback_data="btn_ludo", style="success", emoji_key="btn_ludo"),
+        make_button(label("support", "Support"), callback_data="btn_support", emoji_key="btn_support"),
+        make_button(label("lucky", "Lucky"), callback_data="btn_ludo", emoji_key="btn_ludo"),
     )
-    m.add(make_button("Download Files", callback_data="btn_download", style="success", emoji_key="btn_download"))
+    m.add(make_button(label("download", "Download Files"), callback_data="btn_download", emoji_key="btn_download"))
     return m
 
 def show_main_menu(chat_id, name="User"):
@@ -643,7 +682,7 @@ def show_main_menu(chat_id, name="User"):
     choose = get_setting("messages", "choose_menu", "Select An Option From The Menu Below :")
 
     text = (
-        f"<b>🏪 — {esc(title)} — 🏪</b>\n"
+        f"<b>🏪 — {esc(shop_name)} — 🏪</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{T('welcome_hello','🎉')} <b>HELLO {esc(name).upper()}!</b>\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -734,10 +773,37 @@ def show_store(chat_id, message_id=None):
     else:
         bot.send_message(chat_id, store_text(), reply_markup=panel_markup())
 
+def get_panel_items(panel):
+    """Return default + admin-added products for a category."""
+    items = []
+    seen = set()
+    for label, cb in PANEL_ITEMS.get(panel, []):
+        app_code = cb.replace("app_", "", 1)
+        if app_code in CATALOG:
+            # Use the current product name so admin renames are immediately visible.
+            label = CATALOG.get(app_code, {}).get("name", label)
+            items.append((label, cb))
+            seen.add(app_code)
+    for app_code, product in CATALOG.items():
+        if not isinstance(product, dict):
+            continue
+        if product.get("_panel") == panel and app_code not in seen:
+            items.append((product.get("name", app_code), f"app_{app_code}"))
+    return items
+
+def get_product_panel(app_code):
+    product = CATALOG.get(app_code, {})
+    if isinstance(product, dict) and product.get("_panel"):
+        return product["_panel"]
+    for panel, items in PANEL_ITEMS.items():
+        if any(cb == f"app_{app_code}" for _, cb in items):
+            return panel
+    return "pnl_nonroot"
+
 def panel_list_markup(panel):
     m = InlineKeyboardMarkup()
-    for label, cb in PANEL_ITEMS.get(panel, []):
-        m.add(make_button(label, callback_data=cb, style="primary", emoji_key=cb))
+    for label, cb in get_panel_items(panel):
+        m.add(make_button(label, callback_data=cb, emoji_key=cb))
     m.add(make_button("BACK TO PANELS", callback_data="btn_store", style="danger", emoji_key="btn_back"))
     return m
 
@@ -758,7 +824,7 @@ def product_markup(app_code, stock):
         return m
 
     for duration, price in product.items():
-        if duration == "name":
+        if duration in ("name", "_panel"):
             continue
         label = duration_text(duration)
         if stock > 0:
@@ -776,11 +842,7 @@ def product_markup(app_code, stock):
                 emoji_key=f"app_{app_code}",
             ))
 
-    back = "btn_store"
-    for panel, items in PANEL_ITEMS.items():
-        if any(cb == f"app_{app_code}" for _, cb in items):
-            back = panel
-            break
+    back = get_product_panel(app_code)
     m.add(make_button("BACK TO PANELS", callback_data=back, style="danger", emoji_key="btn_back"))
     return m
 
@@ -796,7 +858,7 @@ def show_product(call, app_code):
              "━━━━━━━━━━━━━━━━━━━━"]
 
     for duration, price in product.items():
-        if duration == "name":
+        if duration in ("name", "_panel"):
             continue
         lines.append(
             f"🛒 <b>Validity:</b> {esc(duration_text(duration))}\n"
@@ -1070,7 +1132,7 @@ def admin_product_markup(app_code):
     m.add(make_button("✏️ Product Name", callback_data=f"admin_prodname|{app_code}", style="primary"))
     product = CATALOG.get(app_code, {})
     for duration in product:
-        if duration != "name":
+        if duration not in ("name", "_panel"):
             m.add(make_button(
                 f"💰 {duration_text(duration)}: {money(product[duration])}",
                 callback_data=f"admin_prodprice|{app_code}|{duration}",
@@ -1131,7 +1193,46 @@ def admin_callback(call):
         global SETTINGS, CATALOG
         SETTINGS = load_settings()
         CATALOG = load_catalog()
+        apply_custom_ui_settings()
         bot.answer_callback_query(call.id, "Settings reloaded.", show_alert=True)
+        return
+
+    # FIX: this handler was missing in the original file. The admin edit
+    # buttons created admin_edit_* callbacks, but nothing processed them.
+    if data.startswith("admin_edit_"):
+        payload = data[len("admin_edit_"):]
+        if "_" not in payload:
+            bot.answer_callback_query(call.id, "Invalid setting.", show_alert=True)
+            return
+        section, key = payload.split("_", 1)
+        allowed = {
+            "bot": {"shop_name": "text", "currency": "text", "usd_rate": "float"},
+            "labels": {
+                "shop": "text", "profile": "text", "balance": "text", "orders": "text",
+                "referral": "text", "support": "text", "lucky": "text", "download": "text",
+            },
+            "messages": {
+                "welcome_title": "text", "choose_menu": "text", "verification_title": "text",
+                "verification_message": "text", "payment_note": "text", "support_title": "text",
+            },
+            "payment": {"upi_id": "text", "binance_pay_id": "text", "bkash_number": "text", "min_amount": "int", "max_amount": "int"},
+            "support": {"telegram_username": "text", "whatsapp_number": "text"},
+            "referral": {"enabled": "bool", "commission_percent": "float"},
+        }
+        value_type = allowed.get(section, {}).get(key)
+        if not value_type:
+            bot.answer_callback_query(call.id, "This setting is not editable.", show_alert=True)
+            return
+        current = SETTINGS.get(section, {}).get(key, "")
+        begin_admin_input(
+            call.from_user.id,
+            "setting",
+            f"✏️ <b>{esc(section)} → {esc(key)}</b>\nCurrent value: <code>{esc(current)}</code>",
+            value_type,
+            section=section,
+            key=key,
+        )
+        bot.answer_callback_query(call.id)
         return
 
     if data == "admin_bot":
@@ -1182,6 +1283,7 @@ def admin_callback(call):
         current = BUTTON_STYLES.get(key, "primary")
         next_style = {"primary": "success", "success": "danger", "danger": "primary"}[current]
         BUTTON_STYLES[key] = next_style
+        save_settings()
         bot.answer_callback_query(call.id, f"{key} → {next_style}", show_alert=True)
         bot.edit_message_reply_markup(chat_id, message_id, reply_markup=admin_styles_markup())
         return
@@ -1273,19 +1375,46 @@ def admin_callback(call):
             ("pnl_iphone", "iPhone"),
             ("pnl_pc", "PC"),
         ]:
-            m.add(make_button(label, callback_data=f"admin_prodpanel_{panel}", style="primary"))
+            m.add(make_button(label, callback_data=f"admin_prodpanel_{panel}"))
+        m.add(make_button("➕ Add Product", callback_data="admin_add_product"))
         m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
-        bot.edit_message_text("<b>📦 PRODUCT MANAGER</b>\n\nChoose a category.", chat_id, message_id, reply_markup=m)
+        bot.edit_message_text("<b>📦 PRODUCT MANAGER</b>\n\nChoose a category or add a new product.", chat_id, message_id, reply_markup=m)
+        bot.answer_callback_query(call.id)
+        return
+
+    if data == "admin_add_product":
+        m = InlineKeyboardMarkup()
+        for panel, label in [
+            ("pnl_nonroot", "Android Non Root"),
+            ("pnl_root", "Android Root"),
+            ("pnl_iphone", "iPhone"),
+            ("pnl_pc", "PC"),
+        ]:
+            m.add(make_button(label, callback_data=f"admin_newproduct_panel|{panel}"))
+        m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger", emoji_key="btn_back"))
+        bot.edit_message_text("<b>➕ ADD PRODUCT</b>\n\nFirst choose the category.", chat_id, message_id, reply_markup=m)
+        bot.answer_callback_query(call.id)
+        return
+
+    if data.startswith("admin_newproduct_panel|"):
+        panel = data.split("|", 1)[1]
+        begin_admin_input(
+            call.from_user.id,
+            "new_product_code",
+            f"➕ <b>New Product</b>\nCategory: <code>{esc(panel)}</code>\n\nSend a unique product code.\nExample: <code>my_product</code>",
+            "text",
+            panel=panel,
+        )
         bot.answer_callback_query(call.id)
         return
 
     if data.startswith("admin_prodpanel_"):
         panel = data.replace("admin_prodpanel_", "", 1)
         m = InlineKeyboardMarkup()
-        for label, cb in PANEL_ITEMS.get(panel, []):
+        for label, cb in get_panel_items(panel):
             app_code = cb.replace("app_", "", 1)
             if app_code in CATALOG:
-                m.add(make_button(label, callback_data=f"admin_product|{app_code}", style="primary", emoji_key=cb))
+                m.add(make_button(label, callback_data=f"admin_product|{app_code}", emoji_key=cb))
         m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger", emoji_key="btn_back"))
         bot.edit_message_text(f"<b>📦 {esc(panel)}</b>\n\nSelect a product.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
@@ -1525,6 +1654,52 @@ def handle_admin_input(message):
                 TEXT_EMOJI_IDS[key] = value
             save_settings()
             bot.send_message(uid, "<b>✅ Custom emoji updated.</b>", reply_markup=admin_menu())
+            return
+
+        if action == "new_product_code":
+            app_code = value.lower().strip()
+            if not app_code or not all(c.isalnum() or c == "_" for c in app_code) or len(app_code) > 40:
+                raise ValueError("Use only letters, numbers and underscore (max 40 chars).")
+            if app_code in CATALOG:
+                raise ValueError("That product code already exists.")
+            admin_input[uid] = {"action": "new_product_name", "type": "text", "panel": state["panel"], "app_code": app_code}
+            bot.send_message(uid, "✏️ <b>Product name</b>\n\nSend the product name.", reply_markup=back_markup("admin_home", "⬅️ Admin Menu"))
+            return
+
+        if action == "new_product_name":
+            if not value:
+                raise ValueError("Product name cannot be empty.")
+            admin_input[uid] = {"action": "new_product_packages", "type": "text", "panel": state["panel"], "app_code": state["app_code"], "name": value}
+            bot.send_message(
+                uid,
+                "💰 <b>Packages & prices</b>\n\nSend them like:\n<code>1=100,7=250,30=600</code>\n\nEach package is <b>duration=price</b>, separated by commas.",
+                reply_markup=back_markup("admin_home", "⬅️ Admin Menu"),
+            )
+            return
+
+        if action == "new_product_packages":
+            packages = {}
+            for item in value.split(","):
+                item = item.strip()
+                if not item or "=" not in item:
+                    raise ValueError("Invalid package format. Example: 1=100,7=250")
+                duration, price_text = item.split("=", 1)
+                duration = duration.strip()
+                price = float(price_text.strip())
+                if not duration:
+                    raise ValueError("Duration cannot be empty.")
+                if price < 0:
+                    raise ValueError("Price cannot be negative.")
+                packages[duration] = price
+            if not packages:
+                raise ValueError("Add at least one package.")
+            CATALOG[state["app_code"]] = {"name": state["name"], "_panel": state["panel"], **packages}
+            save_catalog(CATALOG)
+            bot.send_message(
+                uid,
+                f"<b>✅ Product added.</b>\n\nName: <b>{esc(state['name'])}</b>\nCode: <code>{esc(state['app_code'])}</code>\nCategory: <code>{esc(state['panel'])}</code>",
+                reply_markup=admin_menu(),
+            )
             return
 
         if action == "product_name":
