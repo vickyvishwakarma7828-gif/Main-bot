@@ -419,11 +419,6 @@ def init_database():
         ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'PENDING'
     """)
 
-    cur.execute("""
-        ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS blocked BOOLEAN NOT NULL DEFAULT FALSE
-    """)
-
     conn.commit()
     cur.close()
     conn.close()
@@ -829,45 +824,11 @@ def get_stock_count(filename):
         return 0
 
 
-def _clean_emoji_id(value):
-    """Return a Telegram custom-emoji ID only when it is usable."""
-    if value is None:
-        return ""
-    value = str(value).strip()
-    if not value or not value.isdigit():
-        return ""
-    return value
-
-
-def get_button_emoji_id(emoji_key, callback_data=None):
-    """Resolve the custom emoji for a button, including buy/oos product buttons."""
-    keys = []
-    if emoji_key:
-        keys.append(str(emoji_key))
-    if callback_data:
-        callback_str = str(callback_data)
-        keys.append(callback_str)
-
-        # Product purchase buttons are buy_<app_code>_<duration> and
-        # out-of-stock buttons are oos_<app_code>_<duration>.
-        if callback_str.startswith(("buy_", "oos_")):
-            parts = callback_str.split("_")
-            if len(parts) >= 3:
-                app_code = "_".join(parts[1:-1])
-                keys.append(f"app_{app_code}")
-
-    for key in keys:
-        emoji_id = _clean_emoji_id(BUTTON_EMOJI_IDS.get(key, ""))
-        if emoji_id:
-            return emoji_id
-    return ""
-
-
 def make_button(text, callback_data=None, url=None, style=None, emoji_key=None):
-    kwargs = {"text": str(text)}
+    kwargs = {"text": text}
 
     if callback_data is not None:
-        kwargs["callback_data"] = str(callback_data)
+        kwargs["callback_data"] = callback_data
 
     if url is not None:
         kwargs["url"] = url
@@ -875,9 +836,10 @@ def make_button(text, callback_data=None, url=None, style=None, emoji_key=None):
     if style:
         kwargs["style"] = style
 
-    emoji_id = get_button_emoji_id(emoji_key, callback_data)
-    if emoji_id:
-        kwargs["icon_custom_emoji_id"] = emoji_id
+    if emoji_key:
+        emoji_id = BUTTON_EMOJI_IDS.get(emoji_key, "")
+        if emoji_id:
+            kwargs["icon_custom_emoji_id"] = emoji_id
 
     return InlineKeyboardButton(**kwargs)
 
@@ -1331,7 +1293,7 @@ def admin_product_list_markup(panel):
         if app_code not in catalog:
             continue
         name = catalog[app_code].get("name", fallback_title)
-        markup.add(make_button(name[:60], callback_data=f"admin_product|{app_code}"))
+        markup.add(make_button(name[:60], callback_data=f"admin_product_{app_code}"))
     markup.add(make_button("⬅️ Product Categories", callback_data="admin_products"))
     return markup
 
@@ -1549,9 +1511,7 @@ def admin_input_handler(message):
                 TEXT_EMOJI_IDS[key] = str(value)
             else:
                 raise ValueError("Unknown emoji key.")
-            # Persist the dictionaries independently. Calling save_setting()
-            # reloads SETTINGS, so saving both sequentially is unnecessary and
-            # can make debugging stored emoji mappings confusing.
+            # Persist both dictionaries together.
             save_setting("button_emoji_ids", BUTTON_EMOJI_IDS)
             save_setting("text_emoji_ids", TEXT_EMOJI_IDS)
 
