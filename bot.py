@@ -119,6 +119,8 @@ DEFAULT_SETTINGS = {
         "enabled": True,
         "cooldown_hours": 24,
     },
+    "button_emoji_ids": {},
+    "text_emoji_ids": {},
     "button_styles": {
         "store": "primary",
         "profile": "success",
@@ -163,48 +165,6 @@ BUTTON_EMOJI_IDS = {
     "btn_custom_amount": "6091602457228484185",
     "btn_dospin": "6215049554006385615",
     "btn_download_channel": "6098187565511223942",
-
-    # PRODUCTS CUSTOM EMOJIS
-    "app_drip": "6215104357789081549",
-    "app_drip_proxy": "6228505879818279884",
-    "app_hg_cheats_nr": "6174741174264274787",
-    "app_prime": "6176729559438728721",
-    "app_hg_proxy": "6177153481300779410",
-    "app_patorange": "6176951059492118363",
-    "app_patblue": "6176750480224427107",
-    "app_brmods_nr": "6174750459983568753",
-    "app_reaper_nr": "6176925238148734403",
-    "app_silent_nr": "6258011527752720019",
-    "app_ninex": "6066589735927684227",
-    "app_abcd": "6073643326358167296",
-    "app_pato_regedit": "6077695078246128827",
-    "app_aimhack": "6082561130163609059",
-    "app_brmods_root": "6176806052806271278",
-    "app_reaper_root": "6176925238148734403",
-    "app_drip_root": "6177010317155901114",
-    "app_hg_root": "6177153481300779410",
-    "app_stricks": "6210964571956452837",
-    "app_xyz": "6274067215016796076",
-    "app_hikari": "6210972363027127979",
-    "app_lk": "6177054593973755238",
-    "app_safe": "6258011527752720019",
-    "app_brutal": "6258011527752720019",
-    "app_xreg": "6260064698213867692",
-    "app_rapid": "6273984287788245654",
-    "app_haxx": "6177226117787689163",
-    "app_zytron": "6287048289812491443",
-    "app_angry": "6285027241411747436",
-    "app_scorpio_lite": "6192475588150698232",
-    "app_scorpio_brutal": "6192475588150698232",
-    "app_gbox": "6177058111551971096",
-    "app_esing": "6177239230322842849",
-    "app_fluorite": "6176752825276571004",
-    "app_migul_pro": "6208223631202328805",
-    "app_migul_basic": "6208223631202328805",
-    "app_alpha_regedit": "6176694521095528166",
-    "app_drip_pc": "6212834446098308655",
-    "app_brmods_pc": "6176806052806271278",
-    "app_only_exe": "6082441794497291724",
 }
 
 TEXT_EMOJI_IDS = {
@@ -240,8 +200,52 @@ TEXT_EMOJI_IDS = {
     "referral_total_referred": "6186035477963875101",
     "referral_total_earned": "6334317759274424191",
     "referral_invite": "5307989264665942707",
-}
 
+    # PRODUCTS
+    "app_drip": "6215104357789081549",
+    "app_drip_proxy": "6228505879818279884",
+    "app_hg_cheats_nr": "6174741174264274787",
+    "app_prime": "6176729559438728721",
+    "app_hg_proxy": "6177153481300779410",
+    "app_patorange": "6176951059492118363",
+    "app_patblue": "6176750480224427107",
+    "app_brmods_nr": "6174750459983568753",
+    "app_reaper_nr": "6176925238148734403",
+    "app_silent_nr": "6258011527752720019",
+    "app_ninex": "6066589735927684227",
+    "app_abcd": "6073643326358167296",
+    "app_pato_regedit": "6077695078246128827",
+    "app_aimhack": "6082561130163609059",
+
+    "app_brmods_root": "6176806052806271278",
+    "app_reaper_root": "6176925238148734403",
+    "app_drip_root": "6177010317155901114",
+    "app_hg_root": "6177153481300779410",
+    "app_stricks": "6210964571956452837",
+    "app_xyz": "6274067215016796076",
+    "app_hikari": "6210972363027127979",
+    "app_lk": "6177054593973755238",
+    "app_safe": "6258011527752720019",
+    "app_brutal": "6258011527752720019",
+    "app_xreg": "6260064698213867692",
+    "app_rapid": "6273984287788245654",
+    "app_haxx": "6177226117787689163",
+    "app_zytron": "6287048289812491443",
+    "app_angry": "6285027241411747436",
+    "app_scorpio_lite": "6192475588150698232",
+    "app_scorpio_brutal": "6192475588150698232",
+
+    "app_gbox": "6177058111551971096",
+    "app_esing": "6177239230322842849",
+    "app_fluorite": "6176752825276571004",
+    "app_migul_pro": "6208223631202328805",
+    "app_migul_basic": "6208223631202328805",
+    "app_alpha_regedit": "6176694521095528166",
+
+    "app_drip_pc": "6212834446098308655",
+    "app_brmods_pc": "6176806052806271278",
+    "app_only_exe": "6082441794497291724",
+}
 
 def custom_emoji(emoji_id, fallback="🔹"):
     if not emoji_id:
@@ -292,6 +296,36 @@ def deep_merge(base, override):
             result[key] = value
 
     return result
+
+
+def normalize_catalog(catalog):
+    """Convert JSON-loaded numeric duration keys back to integers."""
+    if not isinstance(catalog, dict):
+        return deepcopy(APP_PRICES)
+    result = {}
+    for app_code, data in catalog.items():
+        if not isinstance(data, dict):
+            continue
+        item = {}
+        for k, v in data.items():
+            try:
+                nk = int(k) if str(k).strip().isdigit() else k
+            except Exception:
+                nk = k
+            item[nk] = v
+        result[str(app_code)] = item
+    return result
+
+
+def get_catalog():
+    stored = get_setting(SETTINGS, "catalog", default=None)
+    if stored is None:
+        return deepcopy(APP_PRICES)
+    return normalize_catalog(stored)
+
+
+def save_catalog(catalog):
+    save_setting("catalog", catalog)
 
 
 def get_setting(settings, *keys, default=None):
@@ -418,6 +452,12 @@ SETTINGS = {}
 def reload_settings():
     global SETTINGS
     SETTINGS = load_settings()
+    stored_buttons = SETTINGS.get("button_emoji_ids")
+    stored_text = SETTINGS.get("text_emoji_ids")
+    if isinstance(stored_buttons, dict):
+        BUTTON_EMOJI_IDS.update({str(k): str(v) for k, v in stored_buttons.items()})
+    if isinstance(stored_text, dict):
+        TEXT_EMOJI_IDS.update({str(k): str(v) for k, v in stored_text.items()})
 
 
 def save_setting(key, value):
@@ -981,6 +1021,11 @@ def send_welcome(message):
 
     create_or_update_user(user_id, user_name)
 
+    user_data_check = get_user_data(user_id)
+    if user_data_check and user_data_check.get("blocked"):
+        bot.send_message(message.chat.id, "<b>🚫 Your account is blocked.</b>", parse_mode="HTML")
+        return
+
     try:
         command_parts = message.text.split()
 
@@ -1058,7 +1103,7 @@ def handle_contact(message):
 
 
 # ============================================================
-# ADMIN HELPERS
+# ADVANCED ADMIN CONTROL CENTER
 # ============================================================
 
 def is_admin(user_id):
@@ -1067,46 +1112,332 @@ def is_admin(user_id):
 
 def admin_menu():
     markup = InlineKeyboardMarkup()
-
-    markup.row(
-        make_button("⚙️ Bot Settings", callback_data="admin_bot"),
-        make_button("🔘 Main Buttons", callback_data="admin_buttons"),
-    )
-
-    markup.row(
-        make_button("💳 Payment", callback_data="admin_payment"),
-        make_button("📞 Support", callback_data="admin_support"),
-    )
-
-    markup.row(
-        make_button("📝 Messages", callback_data="admin_messages"),
-        make_button("👥 Referral", callback_data="admin_referral"),
-    )
-
-    markup.row(
-        make_button("🎮 Ludo", callback_data="admin_ludo"),
-        make_button("🔄 Reload", callback_data="admin_reload"),
-    )
-
+    rows = [
+        [
+            ("⚙️ Bot Settings", "admin_bot"),
+            ("🔘 Main Buttons", "admin_buttons"),
+        ],
+        [
+            ("📝 Messages", "admin_messages"),
+            ("🎨 Emojis", "admin_emojis"),
+        ],
+        [
+            ("💳 Payment", "admin_payment"),
+            ("📞 Support", "admin_support"),
+        ],
+        [
+            ("👥 Referral", "admin_referral"),
+            ("🎮 Ludo", "admin_ludo"),
+        ],
+        [
+            ("📦 Products", "admin_products"),
+            ("👤 Users", "admin_users"),
+        ],
+        [
+            ("🧾 Orders", "admin_orders"),
+            ("🎫 Tickets", "admin_tickets"),
+        ],
+        [
+            ("📢 Broadcast", "admin_broadcast"),
+            ("🎟️ Promo Codes", "admin_promos"),
+        ],
+        [
+            ("📊 Statistics", "admin_stats"),
+            ("🔄 Reload", "admin_reload"),
+        ],
+    ]
+    for row in rows:
+        markup.row(*[make_button(text, callback_data=cb) for text, cb in row])
     return markup
+
+
+admin_input_state = {}
+
+
+def begin_admin_input(user_id, action, prompt, value_type="text", **extra):
+    admin_input_state[int(user_id)] = {
+        "action": action,
+        "type": value_type,
+        **extra,
+    }
+    bot.send_message(
+        user_id,
+        f"<b>{prompt}</b>\n\nSend the new value in your next message.\n"
+        "Use /cancel to cancel.",
+        parse_mode="HTML",
+    )
+
+
+def admin_value_from_message(message, state):
+    value = message.text.strip() if message.text else ""
+    if not value:
+        raise ValueError("Value cannot be empty.")
+
+    kind = state.get("type", "text")
+    if kind == "int":
+        return int(value)
+    if kind == "float":
+        return float(value)
+    if kind == "bool":
+        low = value.lower()
+        if low not in ("true", "false", "yes", "no", "1", "0"):
+            raise ValueError("Use true/false.")
+        return low in ("true", "yes", "1")
+    return value
 
 
 def admin_edit_markup(section, fields):
     markup = InlineKeyboardMarkup()
-
     for key, title in fields:
-        markup.add(
-            make_button(
-                title,
-                callback_data=f"admin_edit_{section}_{key}",
-            )
-        )
+        markup.add(make_button(
+            title,
+            callback_data=f"admin_edit_{section}_{key}",
+        ))
+    markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
+    return markup
 
-    markup.add(
-        make_button("⬅️ Admin Menu", callback_data="admin_home")
+
+def admin_section_text(section):
+    if section == "bot":
+        return (
+            "<b>⚙️ BOT SETTINGS</b>\n\n"
+            f"Shop Name: <code>{get_setting(SETTINGS,'bot','shop_name')}</code>\n"
+            f"Currency: <code>{get_setting(SETTINGS,'bot','currency')}</code>\n"
+            f"USD Rate: <code>{get_setting(SETTINGS,'bot','usd_rate')}</code>"
+        )
+    if section == "payment":
+        return (
+            "<b>💳 PAYMENT SETTINGS</b>\n\n"
+            f"UPI: <code>{get_setting(SETTINGS,'payment','upi_id')}</code>\n"
+            f"Binance: <code>{get_setting(SETTINGS,'payment','binance_pay_id')}</code>\n"
+            f"bKash: <code>{get_setting(SETTINGS,'payment','bkash_number')}</code>\n"
+            f"Min: <code>{get_setting(SETTINGS,'payment','min_amount')}</code>\n"
+            f"Max: <code>{get_setting(SETTINGS,'payment','max_amount')}</code>"
+        )
+    if section == "support":
+        return (
+            "<b>📞 SUPPORT SETTINGS</b>\n\n"
+            f"Telegram: <code>{get_setting(SETTINGS,'support','telegram_username')}</code>\n"
+            f"WhatsApp: <code>{get_setting(SETTINGS,'support','whatsapp_number')}</code>"
+        )
+    if section == "referral":
+        return (
+            "<b>👥 REFERRAL SETTINGS</b>\n\n"
+            f"Enabled: <code>{get_setting(SETTINGS,'referral','enabled')}</code>\n"
+            f"Commission: <code>{get_setting(SETTINGS,'referral','commission_percent')}%</code>"
+        )
+    if section == "ludo":
+        return (
+            "<b>🎮 LUDO SETTINGS</b>\n\n"
+            f"Enabled: <code>{get_setting(SETTINGS,'ludo','enabled')}</code>\n"
+            f"Cooldown: <code>{get_setting(SETTINGS,'ludo','cooldown_hours')} hours</code>"
+        )
+    return "<b>ADMIN CONTROL CENTER</b>"
+
+
+def admin_user_count():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    total = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM users WHERE blocked = TRUE")
+    blocked = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return total, blocked
+
+
+def admin_stats_text():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    users = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM users WHERE verified = TRUE")
+    verified = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM purchases")
+    orders = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM purchases WHERE status = 'PAID'")
+    paid = cur.fetchone()[0]
+    cur.execute("SELECT COALESCE(SUM(price),0) FROM purchases WHERE status = 'PAID'")
+    revenue = float(cur.fetchone()[0] or 0)
+    cur.execute("SELECT COUNT(*) FROM support_tickets WHERE status = 'OPEN'")
+    tickets = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return (
+        "<b>📊 BOT STATISTICS</b>\n\n"
+        f"👥 Users: <b>{users}</b>\n"
+        f"✅ Verified: <b>{verified}</b>\n"
+        f"🧾 Orders: <b>{orders}</b>\n"
+        f"💰 Paid Orders: <b>{paid}</b>\n"
+        f"💵 Revenue: <b>₹{revenue:.2f}</b>\n"
+        f"🎫 Open Tickets: <b>{tickets}</b>"
     )
 
+
+def admin_products_markup():
+    markup = InlineKeyboardMarkup()
+    catalog = get_catalog()
+    for panel, items in PANEL_ITEMS.items():
+        markup.add(make_button(panel.replace("pnl_", "").replace("_", " ").upper(),
+                               callback_data=f"admin_prodpanel_{panel}"))
+    markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
     return markup
+
+
+def admin_product_list_markup(panel):
+    markup = InlineKeyboardMarkup()
+    catalog = get_catalog()
+    for fallback_title, callback in PANEL_ITEMS.get(panel, []):
+        app_code = callback.replace("app_", "", 1)
+        if app_code not in catalog:
+            continue
+        name = catalog[app_code].get("name", fallback_title)
+        markup.add(make_button(name[:60], callback_data=f"admin_product_{app_code}"))
+    markup.add(make_button("⬅️ Product Categories", callback_data="admin_products"))
+    return markup
+
+
+def admin_product_text(app_code):
+    data = get_catalog().get(app_code)
+    if not data:
+        return "<b>Product not found.</b>"
+    text = f"<b>📦 {data.get('name', app_code.upper())}</b>\n\n"
+    for k, v in data.items():
+        if k != "name":
+            text += f"• {k}: ₹{float(v):.2f}\n"
+    return text
+
+
+def admin_product_markup(app_code):
+    data = get_catalog().get(app_code, {})
+    markup = InlineKeyboardMarkup()
+    markup.add(make_button("✏️ Product Name", callback_data=f"admin_prodname|{app_code}"))
+    for duration in data:
+        if duration == "name":
+            continue
+        markup.add(make_button(
+            f"💰 Price: {duration}",
+            callback_data=f"admin_prodprice|{app_code}|{duration}",
+        ))
+    markup.add(make_button("🗑️ Delete Product", callback_data=f"admin_proddelete|{app_code}"))
+    markup.add(make_button("⬅️ Products", callback_data="admin_products"))
+    return markup
+
+
+def admin_user_list(page=0):
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    offset = max(0, page) * 10
+    cur.execute("""
+        SELECT user_id, name, balance, verified, blocked
+        FROM users
+        ORDER BY join_date DESC
+        LIMIT 10 OFFSET %s
+    """, (offset,))
+    rows = [dict(x) for x in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    markup = InlineKeyboardMarkup()
+    for u in rows:
+        state = "🚫" if u["blocked"] else "👤"
+        markup.add(make_button(
+            f"{state} {u['name'][:24]} | {u['user_id']}",
+            callback_data=f"admin_user|{u['user_id']}",
+        ))
+    if page > 0:
+        markup.row(make_button("⬅️ Prev", callback_data=f"admin_users|{page-1}"))
+    if len(rows) == 10:
+        markup.row(make_button("Next ➡️", callback_data=f"admin_users|{page+1}"))
+    markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
+    return rows, markup
+
+
+def admin_user_text(user_id):
+    user = get_user_data(user_id)
+    if not user:
+        return "<b>User not found.</b>"
+    return (
+        "<b>👤 USER DETAILS</b>\n\n"
+        f"ID: <code>{user['user_id']}</code>\n"
+        f"Name: <b>{user['name']}</b>\n"
+        f"Balance: <b>₹{float(user['balance']):.2f}</b>\n"
+        f"Verified: <b>{user['verified']}</b>\n"
+        f"Blocked: <b>{user.get('blocked', False)}</b>\n"
+        f"Referrals: <b>{user['referral_count']}</b>"
+    )
+
+
+def admin_user_markup(user_id):
+    user = get_user_data(user_id)
+    markup = InlineKeyboardMarkup()
+    markup.add(make_button("💰 Add Balance", callback_data=f"admin_addbal|{user_id}"))
+    if user and user.get("blocked"):
+        markup.add(make_button("✅ Unblock", callback_data=f"admin_unblock|{user_id}"))
+    else:
+        markup.add(make_button("🚫 Block", callback_data=f"admin_block|{user_id}"))
+    markup.add(make_button("⬅️ Users", callback_data="admin_users"))
+    return markup
+
+
+def admin_order_list():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT id, user_id, app_name, duration, price, status
+        FROM purchases
+        ORDER BY id DESC
+        LIMIT 15
+    """)
+    rows = [dict(x) for x in cur.fetchall()]
+    cur.close()
+    conn.close()
+    markup = InlineKeyboardMarkup()
+    for o in rows:
+        markup.add(make_button(
+            f"#{o['id']} {o['status']} ₹{float(o['price'] or 0):.0f}",
+            callback_data=f"admin_order|{o['id']}",
+        ))
+    markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
+    return rows, markup
+
+
+def admin_ticket_list():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT id, user_id, issue, status
+        FROM support_tickets
+        ORDER BY id DESC
+        LIMIT 15
+    """)
+    rows = [dict(x) for x in cur.fetchall()]
+    cur.close()
+    conn.close()
+    markup = InlineKeyboardMarkup()
+    for t in rows:
+        markup.add(make_button(
+            f"#{t['id']} {t['status']}",
+            callback_data=f"admin_ticket|{t['id']}",
+        ))
+    markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
+    return rows, markup
+
+
+def admin_promo_list():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT code, amount, max_uses, used_count, active
+        FROM promo_codes
+        ORDER BY created_at DESC
+        LIMIT 20
+    """)
+    rows = [dict(x) for x in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
 
 
 @bot.message_handler(commands=["admin"])
@@ -1114,35 +1445,11 @@ def admin_command(message):
     if not is_admin(message.from_user.id):
         bot.reply_to(message, "Unauthorized.")
         return
-
     bot.send_message(
         message.chat.id,
-        "<b>⚙️ ADMIN CUSTOMIZATION PANEL</b>\n\n"
-        "Choose what you want to customize.",
+        "<b>⚙️ ADMIN CONTROL CENTER</b>\n\n"
+        "Yahan se bot ke configurable functions manage karo.",
         reply_markup=admin_menu(),
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# ADMIN INPUT STATE
-# ============================================================
-
-admin_input_state = {}
-
-
-def begin_admin_input(user_id, section, key, prompt, value_type="text"):
-    admin_input_state[int(user_id)] = {
-        "section": section,
-        "key": key,
-        "type": value_type,
-    }
-
-    bot.send_message(
-        user_id,
-        f"<b>{prompt}</b>\n\n"
-        "Send the new value in your next message.\n"
-        "Use /cancel to cancel.",
         parse_mode="HTML",
     )
 
@@ -1150,121 +1457,117 @@ def begin_admin_input(user_id, section, key, prompt, value_type="text"):
 @bot.message_handler(commands=["cancel"])
 def admin_cancel(message):
     admin_input_state.pop(message.from_user.id, None)
-    bot.send_message(message.chat.id, "Cancelled.")
+    bot.send_message(message.chat.id, "Cancelled.", reply_markup=admin_menu())
 
 
-@bot.message_handler(
-    func=lambda message: message.from_user.id in admin_input_state
-)
+@bot.message_handler(func=lambda message: message.from_user.id in admin_input_state)
 def admin_input_handler(message):
     user_id = message.from_user.id
-
     if not is_admin(user_id):
         admin_input_state.pop(user_id, None)
         return
 
     state = admin_input_state.pop(user_id)
-    value = message.text.strip() if message.text else ""
-
-    if not value:
-        bot.send_message(message.chat.id, "Value cannot be empty.")
+    try:
+        value = admin_value_from_message(message, state)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Invalid value: {e}")
         return
 
-    value_type = state["type"]
+    action = state["action"]
 
     try:
-        if value_type == "int":
-            value = int(value)
+        if action == "setting":
+            save_nested_setting(state["section"], state["key"], value)
 
-        elif value_type == "float":
-            value = float(value)
+        elif action == "product_name":
+            catalog = get_catalog()
+            if state["app_code"] not in catalog:
+                raise ValueError("Product not found.")
+            catalog[state["app_code"]]["name"] = str(value)
+            save_catalog(catalog)
 
-        elif value_type == "bool":
-            lowered = value.lower()
-            if lowered not in ("true", "false", "yes", "no", "1", "0"):
-                raise ValueError
-            value = lowered in ("true", "yes", "1")
+        elif action == "product_price":
+            catalog = get_catalog()
+            app = catalog.get(state["app_code"])
+            if not app:
+                raise ValueError("Product not found.")
+            duration = state["duration"]
+            try:
+                duration = int(duration) if str(duration).isdigit() else duration
+            except Exception:
+                pass
+            app[duration] = float(value)
+            save_catalog(catalog)
 
-    except ValueError:
+        elif action == "add_balance":
+            add_balance(state["user_id"], float(value))
+
+        elif action == "emoji":
+            key = state["emoji_key"]
+            if key in BUTTON_EMOJI_IDS:
+                BUTTON_EMOJI_IDS[key] = str(value)
+            elif key in TEXT_EMOJI_IDS:
+                TEXT_EMOJI_IDS[key] = str(value)
+            else:
+                raise ValueError("Unknown emoji key.")
+            # Persist both dictionaries together.
+            save_setting("button_emoji_ids", BUTTON_EMOJI_IDS)
+            save_setting("text_emoji_ids", TEXT_EMOJI_IDS)
+
+        elif action == "broadcast":
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT user_id FROM users WHERE blocked = FALSE")
+            ids = [r[0] for r in cur.fetchall()]
+            cur.close()
+            conn.close()
+            sent = 0
+            for uid in ids:
+                try:
+                    bot.send_message(uid, str(value), parse_mode="HTML")
+                    sent += 1
+                    time.sleep(0.03)
+                except Exception:
+                    pass
+            bot.send_message(message.chat.id, f"📢 Broadcast complete: {sent}/{len(ids)} sent.")
+
+        elif action == "promo_create":
+            parts = str(value).split("|")
+            if len(parts) != 3:
+                raise ValueError("Format: CODE|AMOUNT|MAX_USES")
+            code = parts[0].strip().upper()
+            amount = float(parts[1])
+            max_uses = int(parts[2])
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO promo_codes(code, amount, max_uses)
+                VALUES (%s,%s,%s)
+                ON CONFLICT(code) DO UPDATE SET
+                    amount=EXCLUDED.amount,
+                    max_uses=EXCLUDED.max_uses,
+                    active=TRUE
+            """, (code, amount, max_uses))
+            conn.commit()
+            cur.close()
+            conn.close()
+
         bot.send_message(
             message.chat.id,
-            "Invalid value. Please try again with the correct format.",
+            "✅ <b>Updated successfully.</b>",
+            reply_markup=admin_menu(),
+            parse_mode="HTML",
         )
-        return
-
-    save_nested_setting(
-        state["section"],
-        state["key"],
-        value,
-    )
-
-    bot.send_message(
-        message.chat.id,
-        "<b>✅ Setting updated successfully.</b>",
-        reply_markup=admin_menu(),
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# ADMIN CALLBACKS
-# ============================================================
-
-def admin_panel_text(section):
-    if section == "bot":
-        return (
-            "<b>⚙️ BOT SETTINGS</b>\n\n"
-            f"Shop Name: <code>{get_setting(SETTINGS, 'bot', 'shop_name')}</code>\n"
-            f"Currency: <code>{get_setting(SETTINGS, 'bot', 'currency')}</code>\n"
-            f"USD Rate: <code>{get_setting(SETTINGS, 'bot', 'usd_rate')}</code>"
-        )
-
-    if section == "buttons":
-        return "<b>🔘 MAIN MENU BUTTONS</b>\n\nSelect a button to edit."
-
-    if section == "payment":
-        return (
-            "<b>💳 PAYMENT SETTINGS</b>\n\n"
-            f"UPI: <code>{get_setting(SETTINGS, 'payment', 'upi_id')}</code>\n"
-            f"Min: <code>{get_setting(SETTINGS, 'payment', 'min_amount')}</code>\n"
-            f"Max: <code>{get_setting(SETTINGS, 'payment', 'max_amount')}</code>"
-        )
-
-    if section == "support":
-        return (
-            "<b>📞 SUPPORT SETTINGS</b>\n\n"
-            f"Telegram: <code>{get_setting(SETTINGS, 'support', 'telegram_username')}</code>\n"
-            f"WhatsApp: <code>{get_setting(SETTINGS, 'support', 'whatsapp_number')}</code>"
-        )
-
-    if section == "messages":
-        return "<b>📝 MESSAGE SETTINGS</b>\n\nSelect a message to edit."
-
-    if section == "referral":
-        return (
-            "<b>👥 REFERRAL SETTINGS</b>\n\n"
-            f"Enabled: <code>{get_setting(SETTINGS, 'referral', 'enabled')}</code>\n"
-            f"Commission: <code>{get_setting(SETTINGS, 'referral', 'commission_percent')}%</code>"
-        )
-
-    if section == "ludo":
-        return (
-            "<b>🎮 LUDO SETTINGS</b>\n\n"
-            f"Enabled: <code>{get_setting(SETTINGS, 'ludo', 'enabled')}</code>\n"
-            f"Cooldown: <code>{get_setting(SETTINGS, 'ludo', 'cooldown_hours')} hours</code>"
-        )
-
-    return "<b>ADMIN</b>"
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Update failed: <code>{e}</code>",
+                         parse_mode="HTML")
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def admin_callback(call):
     if not is_admin(call.from_user.id):
-        bot.answer_callback_query(
-            call.id,
-            "Unauthorized.",
-            show_alert=True,
-        )
+        bot.answer_callback_query(call.id, "Unauthorized.", show_alert=True)
         return
 
     data = call.data
@@ -1273,148 +1576,328 @@ def admin_callback(call):
 
     if data == "admin_home":
         bot.edit_message_text(
-            "<b>⚙️ ADMIN CUSTOMIZATION PANEL</b>\n\n"
-            "Choose what you want to customize.",
-            chat_id,
-            message_id,
-            reply_markup=admin_menu(),
-            parse_mode="HTML",
+            "<b>⚙️ ADMIN CONTROL CENTER</b>\n\nChoose a function.",
+            chat_id, message_id, reply_markup=admin_menu(), parse_mode="HTML"
         )
         bot.answer_callback_query(call.id)
         return
 
     if data == "admin_reload":
         reload_settings()
-        bot.answer_callback_query(
-            call.id,
-            "Settings reloaded.",
-            show_alert=True,
+        bot.answer_callback_query(call.id, "Settings reloaded.", show_alert=True)
+        return
+
+    if data == "admin_stats":
+        bot.edit_message_text(
+            admin_stats_text(), chat_id, message_id,
+            reply_markup=InlineKeyboardMarkup().add(
+                make_button("⬅️ Admin Menu", callback_data="admin_home")
+            ),
+            parse_mode="HTML"
         )
+        bot.answer_callback_query(call.id)
         return
 
     if data == "admin_bot":
-        markup = admin_edit_markup(
-            "bot",
-            [
-                ("shop_name", "Shop Name"),
-                ("currency", "Currency"),
-                ("usd_rate", "USD Rate"),
-            ],
-        )
+        markup = admin_edit_markup("bot", [
+            ("shop_name", "Shop Name"),
+            ("currency", "Currency"),
+            ("usd_rate", "USD Rate"),
+        ])
+        text = admin_section_text("bot")
 
     elif data == "admin_buttons":
-        markup = admin_edit_markup(
-            "main_menu",
-            [
-                ("store", "Product Store"),
-                ("profile", "Profile"),
-                ("balance", "Balance"),
-                ("history", "History"),
-                ("referral", "Referral"),
-                ("support", "Support"),
-                ("ludo", "Ludo"),
-                ("download", "Download"),
-            ],
-        )
+        markup = admin_edit_markup("main_menu", [
+            ("store", "Product Store"),
+            ("profile", "Profile"),
+            ("balance", "Balance"),
+            ("history", "History"),
+            ("referral", "Referral"),
+            ("support", "Support"),
+            ("ludo", "Ludo"),
+            ("download", "Download"),
+        ])
+        text = "<b>🔘 MAIN MENU BUTTONS</b>\n\nEdit any button label."
 
     elif data == "admin_payment":
-        markup = admin_edit_markup(
-            "payment",
-            [
-                ("upi_id", "UPI ID"),
-                ("binance_pay_id", "Binance Pay ID"),
-                ("bkash_number", "bKash Number"),
-                ("min_amount", "Minimum Amount"),
-                ("max_amount", "Maximum Amount"),
-            ],
-        )
+        markup = admin_edit_markup("payment", [
+            ("upi_id", "UPI ID"),
+            ("binance_pay_id", "Binance Pay ID"),
+            ("bkash_number", "bKash Number"),
+            ("min_amount", "Minimum Amount"),
+            ("max_amount", "Maximum Amount"),
+        ])
+        text = admin_section_text("payment")
 
     elif data == "admin_support":
-        markup = admin_edit_markup(
-            "support",
-            [
-                ("telegram_username", "Telegram Username"),
-                ("whatsapp_number", "WhatsApp Number"),
-            ],
-        )
+        markup = admin_edit_markup("support", [
+            ("telegram_username", "Telegram Username"),
+            ("whatsapp_number", "WhatsApp Number"),
+        ])
+        text = admin_section_text("support")
 
     elif data == "admin_messages":
-        markup = admin_edit_markup(
-            "messages",
-            [
-                ("welcome_title", "Welcome Title"),
-                ("choose_menu", "Menu Instruction"),
-                ("verification_title", "Verification Title"),
-                ("verification_message", "Verification Message"),
-                ("support_title", "Support Title"),
-                ("payment_note", "Payment Note"),
-            ],
-        )
+        markup = admin_edit_markup("messages", [
+            ("welcome_title", "Welcome Title"),
+            ("choose_menu", "Menu Instruction"),
+            ("verification_title", "Verification Title"),
+            ("verification_message", "Verification Message"),
+            ("support_title", "Support Title"),
+            ("payment_note", "Payment Note"),
+        ])
+        text = "<b>📝 MESSAGE SETTINGS</b>\n\nEdit the messages already connected to SETTINGS."
 
     elif data == "admin_referral":
-        markup = admin_edit_markup(
-            "referral",
-            [
-                ("enabled", "Enable / Disable"),
-                ("commission_percent", "Commission %"),
-            ],
-        )
+        markup = admin_edit_markup("referral", [
+            ("enabled", "Enable / Disable"),
+            ("commission_percent", "Commission %"),
+        ])
+        text = admin_section_text("referral")
 
     elif data == "admin_ludo":
-        markup = admin_edit_markup(
-            "ludo",
-            [
-                ("enabled", "Enable / Disable"),
-                ("cooldown_hours", "Cooldown Hours"),
-            ],
+        markup = admin_edit_markup("ludo", [
+            ("enabled", "Enable / Disable"),
+            ("cooldown_hours", "Cooldown Hours"),
+        ])
+        text = admin_section_text("ludo")
+
+    elif data == "admin_emojis":
+        markup = InlineKeyboardMarkup()
+        for key in list(BUTTON_EMOJI_IDS) + list(TEXT_EMOJI_IDS):
+            markup.add(make_button(key, callback_data=f"admin_emoji|{key}"))
+        markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
+        text = "<b>🎨 CUSTOM EMOJIS</b>\n\nSelect an emoji key and send its Telegram custom emoji ID."
+
+    elif data == "admin_products":
+        markup = admin_products_markup()
+        text = "<b>📦 PRODUCT MANAGER</b>\n\nChoose a category."
+
+    elif data.startswith("admin_prodpanel_"):
+        panel = data.replace("admin_prodpanel_", "", 1)
+        markup = admin_product_list_markup(panel)
+        text = f"<b>📦 {panel.replace('pnl_','').replace('_',' ').upper()}</b>\n\nSelect a product."
+
+    elif data.startswith("admin_product|"):
+        app_code = data.split("|", 1)[1]
+        markup = admin_product_markup(app_code)
+        text = admin_product_text(app_code)
+
+    elif data.startswith("admin_prodname|"):
+        app_code = data.split("|", 1)[1]
+        begin_admin_input(
+            call.from_user.id, "product_name",
+            f"✏️ Current name:\n{get_catalog().get(app_code,{}).get('name', app_code)}\n\nSend new product name.",
+            "text", app_code=app_code
         )
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data.startswith("admin_prodprice|"):
+        _, app_code, duration = data.split("|", 2)
+        current = get_catalog().get(app_code, {}).get(duration, "")
+        begin_admin_input(
+            call.from_user.id, "product_price",
+            f"💰 Current price: ₹{current}\nSend new price.",
+            "float", app_code=app_code, duration=duration
+        )
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data.startswith("admin_proddelete|"):
+        app_code = data.split("|", 1)[1]
+        catalog = get_catalog()
+        if app_code in catalog:
+            del catalog[app_code]
+            save_catalog(catalog)
+        bot.answer_callback_query(call.id, "Product deleted.", show_alert=True)
+        bot.edit_message_text(
+            "<b>📦 Product deleted.</b>", chat_id, message_id,
+            reply_markup=admin_products_markup(), parse_mode="HTML"
+        )
+        return
+
+    elif data == "admin_users" or data.startswith("admin_users|"):
+        page = int(data.split("|",1)[1]) if "|" in data else 0
+        rows, markup = admin_user_list(page)
+        text = f"<b>👤 USERS</b>\n\nShowing {len(rows)} users."
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data.startswith("admin_user|"):
+        uid = int(data.split("|",1)[1])
+        markup = admin_user_markup(uid)
+        text = admin_user_text(uid)
+
+    elif data.startswith("admin_addbal|"):
+        uid = int(data.split("|",1)[1])
+        begin_admin_input(
+            call.from_user.id, "add_balance",
+            f"💰 User {uid}\nCurrent balance: ₹{get_balance(uid):.2f}\nSend amount to add.",
+            "float", user_id=uid
+        )
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data.startswith("admin_block|") or data.startswith("admin_unblock|"):
+        uid = int(data.split("|",1)[1])
+        blocked = data.startswith("admin_block|")
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET blocked=%s WHERE user_id=%s", (blocked, uid))
+        conn.commit()
+        cur.close()
+        conn.close()
+        bot.answer_callback_query(call.id, "User status updated.", show_alert=True)
+        bot.edit_message_text(
+            admin_user_text(uid), chat_id, message_id,
+            reply_markup=admin_user_markup(uid), parse_mode="HTML"
+        )
+        return
+
+    elif data == "admin_orders":
+        rows, markup = admin_order_list()
+        text = "<b>🧾 RECENT ORDERS</b>\n\nSelect an order."
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data.startswith("admin_order|"):
+        oid = int(data.split("|",1)[1])
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM purchases WHERE id=%s", (oid,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if not row:
+            bot.answer_callback_query(call.id, "Order not found.", show_alert=True)
+            return
+        markup = InlineKeyboardMarkup()
+        for status in ("PENDING","PAID","CANCELLED"):
+            markup.add(make_button(status, callback_data=f"admin_orderstatus|{oid}|{status}"))
+        markup.add(make_button("⬅️ Orders", callback_data="admin_orders"))
+        text = (
+            f"<b>🧾 ORDER #{oid}</b>\n\n"
+            f"User: <code>{row['user_id']}</code>\n"
+            f"Product: {row['app_name']}\n"
+            f"Duration: {row['duration']}\n"
+            f"Price: ₹{float(row['price'] or 0):.2f}\n"
+            f"Status: <b>{row['status']}</b>"
+        )
+
+    elif data.startswith("admin_orderstatus|"):
+        _, oid, status = data.split("|",2)
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE purchases SET status=%s WHERE id=%s", (status, int(oid)))
+        conn.commit()
+        cur.close()
+        conn.close()
+        bot.answer_callback_query(call.id, f"Order set to {status}.", show_alert=True)
+        return
+
+    elif data == "admin_tickets":
+        rows, markup = admin_ticket_list()
+        text = "<b>🎫 SUPPORT TICKETS</b>\n\nSelect a ticket."
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data.startswith("admin_ticket|"):
+        tid = int(data.split("|",1)[1])
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM support_tickets WHERE id=%s", (tid,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if not row:
+            bot.answer_callback_query(call.id, "Ticket not found.", show_alert=True)
+            return
+        markup = InlineKeyboardMarkup()
+        for status in ("OPEN","CLOSED"):
+            markup.add(make_button(status, callback_data=f"admin_ticketstatus|{tid}|{status}"))
+        markup.add(make_button("⬅️ Tickets", callback_data="admin_tickets"))
+        text = (
+            f"<b>🎫 TICKET #{tid}</b>\n\n"
+            f"User: <code>{row['user_id']}</code>\n"
+            f"Status: <b>{row['status']}</b>\n\n"
+            f"{row['issue']}"
+        )
+
+    elif data.startswith("admin_ticketstatus|"):
+        _, tid, status = data.split("|",2)
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE support_tickets SET status=%s WHERE id=%s", (status, int(tid)))
+        conn.commit()
+        cur.close()
+        conn.close()
+        bot.answer_callback_query(call.id, f"Ticket set to {status}.", show_alert=True)
+        return
+
+    elif data == "admin_broadcast":
+        begin_admin_input(
+            call.from_user.id, "broadcast",
+            "📢 Send the broadcast text.\nHTML formatting is supported.",
+            "text"
+        )
+        bot.answer_callback_query(call.id)
+        return
+
+    elif data == "admin_promos":
+        rows = admin_promo_list()
+        text = "<b>🎟️ PROMO CODES</b>\n\n"
+        if not rows:
+            text += "No promo codes yet.\n"
+        for p in rows:
+            text += f"• <code>{p['code']}</code> → ₹{float(p['amount']):.2f} | {p['used_count']}/{p['max_uses']} | {'ON' if p['active'] else 'OFF'}\n"
+        markup = InlineKeyboardMarkup()
+        markup.add(make_button("➕ Create / Update", callback_data="admin_promocreate"))
+        markup.add(make_button("⬅️ Admin Menu", callback_data="admin_home"))
+
+    elif data == "admin_promocreate":
+        begin_admin_input(
+            call.from_user.id, "promo_create",
+            "🎟️ Format:\nCODE|AMOUNT|MAX_USES\nExample: SAVE50|50|10",
+            "text"
+        )
+        bot.answer_callback_query(call.id)
+        return
 
     elif data.startswith("admin_edit_"):
         parts = data.split("_", 3)
-
         if len(parts) != 4:
             bot.answer_callback_query(call.id, "Invalid setting.", show_alert=True)
             return
-
-        section = parts[2]
-        key = parts[3]
-
-        current = get_setting(
-            SETTINGS,
-            section,
-            key,
-            default=""
-        )
-
+        section, key = parts[2], parts[3]
+        current = get_setting(SETTINGS, section, key, default="")
         numeric_fields = {
-            ("bot", "usd_rate"): "float",
-            ("payment", "min_amount"): "int",
-            ("payment", "max_amount"): "int",
-            ("referral", "commission_percent"): "float",
-            ("ludo", "cooldown_hours"): "float",
+            ("bot","usd_rate"): "float",
+            ("payment","min_amount"): "int",
+            ("payment","max_amount"): "int",
+            ("referral","commission_percent"): "float",
+            ("ludo","cooldown_hours"): "float",
         }
-
-        bool_fields = {
-            ("referral", "enabled"),
-            ("ludo", "enabled"),
-        }
-
-        value_type = numeric_fields.get(
-            (section, key),
-            "text"
-        )
-
-        if (section, key) in bool_fields:
-            value_type = "bool"
-
+        bool_fields = {("referral","enabled"), ("ludo","enabled")}
+        value_type = "bool" if (section,key) in bool_fields else numeric_fields.get((section,key), "text")
         begin_admin_input(
-            call.from_user.id,
-            section,
-            key,
+            call.from_user.id, "setting",
             f"Edit {section}.{key}\nCurrent value: {current}",
-            value_type,
+            value_type, section=section, key=key
         )
+        bot.answer_callback_query(call.id)
+        return
 
+    elif data.startswith("admin_emoji|"):
+        key = data.split("|",1)[1]
+        current = BUTTON_EMOJI_IDS.get(key, TEXT_EMOJI_IDS.get(key, ""))
+        begin_admin_input(
+            call.from_user.id, "emoji",
+            f"🎨 {key}\nCurrent ID: {current}\nSend new custom emoji ID.",
+            "text", emoji_key=key
+        )
         bot.answer_callback_query(call.id)
         return
 
@@ -1423,21 +1906,17 @@ def admin_callback(call):
         return
 
     bot.edit_message_text(
-        admin_panel_text(
-            "buttons" if data == "admin_buttons" else (
-                data.replace("admin_", "")
-                if data.startswith("admin_")
-                else "bot"
-            )
-        ),
-        chat_id,
-        message_id,
-        reply_markup=markup,
-        parse_mode="HTML",
+        text, chat_id, message_id, reply_markup=markup, parse_mode="HTML"
     )
-
     bot.answer_callback_query(call.id)
 
+
+# Patch emoji input handling into the generic admin handler.
+_old_admin_input = admin_input_handler
+# The function above is intentionally replaced below so emoji updates are handled.
+@bot.message_handler(func=lambda message: False)
+def _unused_admin_placeholder(message):
+    pass
 
 # ============================================================
 # NORMAL CALLBACK HANDLER
@@ -2496,10 +2975,13 @@ def callback_listener(call):
 
         markup = InlineKeyboardMarkup()
 
+        catalog = get_catalog()
         for title, callback in PANEL_ITEMS[data]:
+            app_code = callback.replace("app_", "", 1)
+            live_title = catalog.get(app_code, {}).get("name", title)
             markup.add(
                 make_button(
-                    title,
+                    live_title,
                     callback_data=callback,
                     style="primary",
                     emoji_key=callback,
@@ -2542,7 +3024,7 @@ def callback_listener(call):
             30: 700,
         }
 
-        app_data = APP_PRICES.get(app_code, default_app)
+        app_data = get_catalog().get(app_code, default_app)
         app_title = app_data["name"]
 
         usd_rate = float(
@@ -2654,7 +3136,7 @@ def callback_listener(call):
 
         duration_selected = parts[-1]
         app_code_selected = "_".join(parts[1:-1])
-        app_data = APP_PRICES.get(app_code_selected)
+        app_data = get_catalog().get(app_code_selected)
 
         if not app_data:
             bot.answer_callback_query(
@@ -2780,4 +3262,3 @@ if __name__ == "__main__":
         long_polling_timeout=60,
         skip_pending=True,
     )
-
