@@ -1,4 +1,6 @@
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import sqlite3
 import random
@@ -2127,13 +2129,39 @@ def handle_ticket_message(message):
 # STARTUP
 # ============================================================
 
+# ============================================================
+# RENDER HTTP SERVER
+# Keeps Render Web Service port alive while Telegram polling runs.
+# ============================================================
+
+class RenderHealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"VICKY X MODE SHOP BOT is running")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_http_server():
+    port = int(os.environ.get("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), RenderHealthHandler)
+    print(f"HTTP health server running on port {port}")
+    server.serve_forever()
+
+
 print("VICKY X MODE SHOP bot starting...")
 print("Configured admin IDs:", len(ADMIN_IDS))
 
 if __name__ == "__main__":
+    # Start Render HTTP server in background.
+    threading.Thread(target=start_http_server, daemon=True).start()
+
+    # Start Telegram bot polling in the main thread.
     bot.infinity_polling(
         timeout=60,
         long_polling_timeout=60,
         skip_pending=True,
     )
-
