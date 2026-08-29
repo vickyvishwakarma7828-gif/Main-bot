@@ -5,7 +5,7 @@ import json
 import sqlite3
 import random
 import html
-from datetime import datetime
+from nidatetime import datetime
 
 import telebot
 from telebot.types import (
@@ -549,10 +549,26 @@ CATALOG = load_catalog()
 # RUNTIME STATE
 # ============================================================
 
+SPIN_FILE = "user_spins.json"
+
+def load_spin_data():
+    if os.path.exists(SPIN_FILE):
+        try:
+            with open(SPIN_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+def save_spin_data(data):
+    with open(SPIN_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
 amount_input = {}
 admin_input = {}
 ticket_waiting = set()
-spin_last = {}
+spin_last = load_spin_data()
 
 # ============================================================
 # HELPERS
@@ -574,6 +590,9 @@ def T(key, fallback="🔹"):
 
 def button_emoji(key, fallback="🔹"):
     return custom_emoji(BUTTON_EMOJI_IDS.get(key, ""), fallback)
+
+def E_LUDO():
+    return button_emoji("btn_ludo", "🎲")
 
 def get_button_style(callback_data="", text="", explicit=None):
     cb = str(callback_data or "")
@@ -648,6 +667,14 @@ def get_user(user_id):
     row = conn.execute("SELECT * FROM users WHERE user_id=?", (int(user_id),)).fetchone()
     conn.close()
     return row
+
+def add_user_balance(user_id, amount):
+    conn = db()
+    conn.execute("UPDATE users SET balance=balance+? WHERE user_id=?", (float(amount), int(user_id)))
+    conn.commit()
+    row = conn.execute("SELECT balance FROM users WHERE user_id=?", (int(user_id),)).fetchone()
+    conn.close()
+    return float(row["balance"]) if row else 0.0
 
 def ensure_user(user):
     uid = int(user.id)
@@ -919,22 +946,35 @@ def show_product(call, app_code):
 def profile_text(uid):
     row = get_user(uid)
     conn = db()
-    orders = conn.execute("SELECT COUNT(*) c, COALESCE(SUM(price),0) s FROM orders WHERE user_id=?", (uid,)).fetchone()
+    orders = conn.execute(
+        "SELECT COUNT(*) c, COALESCE(SUM(price),0) s FROM orders WHERE user_id=?",
+        (uid,),
+    ).fetchone()
     conn.close()
+
     name = row["name"] if row else "User"
+    balance = row["balance"] if row else 0
+    referrals = row["referrals"] if row else 0
+    joined_at = row["joined_at"] if row else ""
+
     return (
-        "<b>👑 — YOUR SECURE PROFILE — 👑</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🆔 <b>ID:</b> <code>{uid}</code>\n"
-        f"👤 <b>Name:</b> {esc(name)}\n"
-        f"💼 <b>Account:</b> User\n\n"
-        "💰 — WALLET — 💰\n"
-        f"💵 Current Balance: <b>{money(row['balance'] if row else 0)}</b>\n\n"
-        "📊 — GLOBAL STATISTICS — 📊\n"
-        f"🔑 Total Orders: <b>{orders['c']}</b>\n"
-        f"📈 Total Spent: <b>{money(orders['s'])}</b>\n"
-        f"👥 Total Referrals: <b>{row['referrals'] if row else 0}</b>\n"
-        f"📅 Joined: <b>{esc(row['joined_at'] if row else '')}</b>"
+        f"<b>{custom_emoji('5474625972751837256', '🔐')} YOUR SECURE PROFILE "
+        f"{custom_emoji('5474625972751837256', '🔐')}</b>\n\n"
+        f"{custom_emoji('5474625972751837256', '🆔')} Grid ID: <code>{uid}</code>\n"
+        f"{custom_emoji('5219827798125846744', '👤')} Name: {esc(name)}\n"
+        f"{custom_emoji('6129584162992034014', '⭐')} Account Level: "
+        f"{custom_emoji('6032994772321309200', '🔹')} Regular User\n\n"
+        f"<b>{custom_emoji('6183582647910934266', '💰')} — Wallet — "
+        f"{custom_emoji('5305699699204837855', '💳')}</b>\n"
+        f"{custom_emoji('6183582647910934266', '💰')} Current Balance: "
+        f"{money(balance)} {custom_emoji('5305699699204837855', '💳')}\n\n"
+        f"<b>{custom_emoji('6116362711761687276', '📊')} — Global Statistics —</b>\n"
+        f"{custom_emoji('6176966310920983412', '🛒')} Total Orders: "
+        f"{orders['c']}\n"
+        f"{custom_emoji('5197503331215361533', '💵')} Total Spent: "
+        f"{money(orders['s'])}\n"
+        f"{custom_emoji('6033125983572201397', '👥')} Total Referrals: {referrals}\n\n"
+        f"{custom_emoji('5433614043006903194', '📅')} Joined Grid: {esc(joined_at)}"
     )
 
 def orders_text(uid):
@@ -960,20 +1000,28 @@ def referral_text(uid, username):
     row = get_user(uid)
     enabled = bool(get_setting("referral", "enabled", True))
     if not enabled:
-        return "<b>🔗 AFFILIATE PROGRAM</b>\n\nReferral system is currently disabled."
-    commission = float(get_setting("referral", "commission_percent", 15))
+        return (
+            f"<b>{T('referral_title_left')} AFFILIATE PROGRAM "
+            f"{T('referral_title_right')}</b>\n\n"
+            "Referral system is currently disabled."
+        )
+
     ref_link = f"https://t.me/{username}?start=ref_{uid}" if username else ""
+    total_referred = row["referrals"] if row else 0
+    total_earned = row["earned"] if row else 0
+
     return (
-        "<b>👥 — AFFILIATE PROGRAM — 👥</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🟢 Status: <b>ACTIVE</b>\n"
-        f"💰 Earn <b>{commission:g}%</b> commission on eligible purchases made by referred friends!\n\n"
-        "📊 <b>YOUR STATS:</b>\n"
-        f"👥 Total Invited: <b>{row['referrals'] if row else 0}</b>\n"
-        f"💵 Lifetime Earned: <b>{money(row['earned'] if row else 0)}</b>\n\n"
-        "🔗 <b>Your Invite Link:</b>\n"
-        f"<code>{esc(ref_link)}</code>\n\n"
-        "<i>Copy and share this link to start earning!</i>"
+        f"<b>{T('referral_title_left')} AFFILIATE PROGRAM "
+        f"{T('referral_title_right')}</b>\n\n"
+        f"{T('referral_status')} Status: ACTIVE\n"
+        f"{T('referral_earn_left')} "
+        "Earn 15% commission on every successful purchase "
+        f"{T('referral_earn_right')} "
+        "made by your referred friends!\n\n"
+        f"{T('referral_total_referred')} Total Referred: {total_referred}\n"
+        f"{T('referral_total_earned')} Total Earned: {money(total_earned)}\n\n"
+        f"{T('referral_invite')} Your Invite Link:\n"
+        f"<code>{esc(ref_link)}</code>"
     )
 
 # ============================================================
@@ -1280,6 +1328,69 @@ def admin_callback(call):
             key=key,
         )
         bot.answer_callback_query(call.id)
+        return
+
+    # Main Menu Texts must be handled here (inside the admin_* callback handler).
+    if data == "admin_texts":
+        bot.edit_message_text(
+            "<b>📝 MAIN MENU TEXTS</b>\n\nSelect the text you want to customize.",
+            chat_id, message_id, reply_markup=admin_texts_markup(),
+        )
+        bot.answer_callback_query(call.id)
+        return
+
+    if data.startswith("admin_text|"):
+        key = data.split("|", 1)[1]
+        if key not in TEXT_DEFAULTS:
+            bot.answer_callback_query(call.id, "Invalid menu text.", show_alert=True)
+            return
+        current = get_setting("labels", key, TEXT_DEFAULTS.get(key, key))
+        emojis = get_setting("text_emojis", key, {"left":"", "right":""})
+        if not isinstance(emojis, dict):
+            emojis = {"left":"", "right":""}
+        m = InlineKeyboardMarkup()
+        m.add(make_button("✏️ Edit Text", callback_data=f"admin_edittext|{key}", style="primary"))
+        m.add(make_button("⬅️ Left Custom Emoji", callback_data=f"admin_textemoji|{key}|left", style="success"))
+        m.add(make_button("➡️ Right Custom Emoji", callback_data=f"admin_textemoji|{key}|right", style="success"))
+        m.add(make_button("🗑 Clear Emojis", callback_data=f"admin_clearemoji|{key}", style="danger"))
+        m.add(make_button("⬅️ BACK", callback_data="admin_texts", style="danger"))
+        preview = (
+            f"<b>TEXT CUSTOMIZATION</b>\n\nPreview: {custom_menu_text(key)}\n\n"
+            f"Text: <code>{esc(str(current))}</code>\n"
+            f"Left: <code>{esc(str(emojis.get('left','') or 'None'))}</code>\n"
+            f"Right: <code>{esc(str(emojis.get('right','') or 'None'))}</code>"
+        )
+        bot.edit_message_text(preview, chat_id, message_id, reply_markup=m)
+        bot.answer_callback_query(call.id)
+        return
+
+    if data.startswith("admin_edittext|"):
+        key = data.split("|", 1)[1]
+        if key not in TEXT_DEFAULTS:
+            bot.answer_callback_query(call.id, "Invalid menu text.", show_alert=True)
+            return
+        begin_admin_input(uid, "menu_text", "Send the new text:", "text", text_key=key)
+        bot.answer_callback_query(call.id)
+        return
+
+    if data.startswith("admin_textemoji|"):
+        parts = data.split("|", 2)
+        if len(parts) != 3 or parts[1] not in TEXT_DEFAULTS or parts[2] not in ("left", "right"):
+            bot.answer_callback_query(call.id, "Invalid emoji setting.", show_alert=True)
+            return
+        _, key, side = parts
+        begin_admin_input(uid, "menu_emoji", "Send the custom emoji ID:", "text", text_key=key, emoji_side=side)
+        bot.answer_callback_query(call.id)
+        return
+
+    if data.startswith("admin_clearemoji|"):
+        key = data.split("|", 1)[1]
+        if key not in TEXT_DEFAULTS:
+            bot.answer_callback_query(call.id, "Invalid menu text.", show_alert=True)
+            return
+        save_setting("text_emojis", key, {"left":"", "right":""})
+        bot.edit_message_reply_markup(chat_id, message_id, reply_markup=admin_texts_markup())
+        bot.answer_callback_query(call.id, "Emojis cleared")
         return
 
     if data == "admin_bot":
@@ -2116,68 +2227,59 @@ def normal_callback(call):
         bot.answer_callback_query(call.id)
         return
 
-    if data == "admin_texts":
-        bot.edit_message_text("<b>📝 MAIN MENU TEXTS</b>\n\nSelect the text you want to customize.", chat_id, message_id, reply_markup=admin_texts_markup())
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_text|"):
-        key = data.split("|", 1)[1]
-        current = get_setting("labels", key, TEXT_DEFAULTS.get(key, key))
-        emojis = get_setting("text_emojis", key, {"left":"", "right":""})
-        if not isinstance(emojis, dict): emojis = {"left":"", "right":""}
-        m = InlineKeyboardMarkup()
-        m.add(make_button("✏️ Edit Text", callback_data=f"admin_edittext|{key}", style="primary"))
-        m.add(make_button("⬅️ Left Custom Emoji", callback_data=f"admin_textemoji|{key}|left", style="success"))
-        m.add(make_button("➡️ Right Custom Emoji", callback_data=f"admin_textemoji|{key}|right", style="success"))
-        m.add(make_button("🗑 Clear Emojis", callback_data=f"admin_clearemoji|{key}", style="danger"))
-        m.add(make_button("⬅️ BACK", callback_data="admin_texts", style="danger"))
-        preview=f"<b>TEXT CUSTOMIZATION</b>\n\nPreview: {custom_menu_text(key)}\n\nText: <code>{esc(str(current))}</code>\nLeft: <code>{esc(str(emojis.get('left','') or 'None'))}</code>\nRight: <code>{esc(str(emojis.get('right','') or 'None'))}</code>"
-        bot.edit_message_text(preview, chat_id, message_id, reply_markup=m)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_edittext|"):
-        key=data.split("|",1)[1]
-        begin_admin_input(uid, "menu_text", "Send the new text:", "text", text_key=key)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_textemoji|"):
-        _, key, side = data.split("|",2)
-        begin_admin_input(uid, "menu_emoji", "Send the custom emoji ID:", "text", text_key=key, emoji_side=side)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_clearemoji|"):
-        key=data.split("|",1)[1]
-        save_setting("text_emojis", key, {"left":"", "right":""})
-        bot.answer_callback_query(call.id, "Emojis cleared")
-        return
-
     if data == "btn_ludo":
         if not bool(get_setting("ludo", "enabled", True)):
             bot.answer_callback_query(call.id, "Lucky feature is disabled.", show_alert=True)
             return
-        now = datetime.now().timestamp()
-        cooldown = float(get_setting("ludo", "cooldown_hours", 24)) * 3600
-        last = spin_last.get(uid, 0)
-        if now - last < cooldown:
-            remaining = int(cooldown - (now - last))
-            bot.answer_callback_query(
-                call.id,
-                f"Try again in about {remaining // 3600}h {(remaining % 3600)//60}m.",
-                show_alert=True,
-            )
-            return
-        spin_last[uid] = now
-        prizes = ["₹0", "₹0", "₹0", "₹5", "₹10"]
-        prize = random.choice(prizes)
-        bot.edit_message_text(
-            f"<b>🎁 LUCKY RESULT</b>\n\nYou got: <b>{prize}</b>\n\nNext spin will be available later.",
-            chat_id, message_id,
-            reply_markup=back_markup(),
+        text = (
+            f"<b>{E_LUDO()} LUDO SPIN & WIN</b>\n\n"
+            "चक्र घुमाएं और पुरस्कार जीतें!\n"
+            "Niyam: आप इसे 24 घंटे में सिर्फ 1 बार घुमा सकते हैं।"
         )
+        spin_markup = InlineKeyboardMarkup()
+        spin_markup.add(make_button("Spin Dice Now", callback_data="btn_dospin", style="success", emoji_key="btn_dospin"))
+        spin_markup.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=spin_markup)
+        bot.answer_callback_query(call.id)
+        return
+
+    if data == "btn_dospin":
+        if not bool(get_setting("ludo", "enabled", True)):
+            bot.answer_callback_query(call.id, "Lucky feature is disabled.", show_alert=True)
+            return
+        current_time = time.time()
+        cooldown_period = float(get_setting("ludo", "cooldown_hours", 24)) * 3600
+        last_spin = float(spin_last.get(str(uid), spin_last.get(uid, 0)) or 0)
+        if current_time - last_spin < cooldown_period:
+            remaining = int(cooldown_period - (current_time - last_spin))
+            hours, rem = divmod(remaining, 3600)
+            minutes = rem // 60
+            bot.answer_callback_query(call.id, f"Try again in about {hours}h {minutes}m.", show_alert=True)
+            return
+
+        spin_last[str(uid)] = current_time
+        save_spin_data(spin_last)
+        try:
+            bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception:
+            pass
+
+        dice_msg = bot.send_dice(chat_id=chat_id)
+        dice_value = dice_msg.dice.value
+        rewards = {1: 0.10, 2: 0.20, 3: 0.30, 4: 0.40, 5: 0.50, 6: 1.00}
+        won_amount = rewards.get(dice_value, 0.10)
+        new_balance = add_user_balance(uid, won_amount)
+        time.sleep(3)
+        spin_text = (
+            f"<b>{E_LUDO()} LUCKY DICE RESULT</b>\n\n"
+            f"Dice Value: {dice_value}\n\n"
+            f"You Won: {money(won_amount)} (~ ${usd(won_amount):.2f})\n"
+            f"Total Balance: {money(new_balance)} (~ ${usd(new_balance):.2f})\n\n"
+            f"Congratulations! Come back after {float(get_setting('ludo','cooldown_hours',24)):g} hours."
+        )
+        result_markup = InlineKeyboardMarkup()
+        result_markup.add(make_button("BACK TO MENU", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+        bot.send_message(chat_id, spin_text, reply_to_message_id=dice_msg.message_id, reply_markup=result_markup)
         bot.answer_callback_query(call.id)
         return
 
