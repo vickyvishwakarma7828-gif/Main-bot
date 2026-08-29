@@ -180,7 +180,7 @@ TEXT_EMOJI_IDS = {'welcome_title_left': '5278702045883292456',
 TEXT_DEFAULTS = {
     "shop": "Shop", "profile": "My Profile", "balance": "Add Balance",
     "orders": "My Orders", "referral": "Referral", "support": "Support",
-    "lucky": "Lucky", "download": "Download Files",
+    "ludo": "Ludo Spin", "download": "Download Files",
 }
 
 TEXT_EMOJI_SETTINGS = {k: {"left": "", "right": ""} for k in TEXT_DEFAULTS}
@@ -357,7 +357,7 @@ DEFAULT_SETTINGS = {
         "orders": "My Orders",
         "referral": "Referral",
         "support": "Support",
-        "lucky": "Lucky",
+        "ludo": "Ludo Spin",
         "download": "Download Files",
     },
     "custom_ui": {
@@ -410,6 +410,10 @@ def load_settings():
             for section, values in saved.items():
                 if isinstance(values, dict) and section in data:
                     data[section].update(values)
+            # Older versions called the Ludo main-menu label "lucky".
+            # If an old settings file has that key, use it for the new "ludo" key.
+            if isinstance(saved.get("labels"), dict) and "ludo" not in saved["labels"] and "lucky" in saved["labels"]:
+                data["labels"]["ludo"] = saved["labels"]["lucky"]
         except Exception:
             pass
     return data
@@ -736,7 +740,7 @@ def main_menu_markup():
     )
     m.row(
         make_button(custom_menu_text("support"), callback_data="btn_support", emoji_key=None),
-        make_button(custom_menu_text("lucky"), callback_data="btn_ludo", emoji_key=None),
+        make_button(custom_menu_text("ludo"), callback_data="btn_ludo", emoji_key=None),
     )
     m.add(make_button(custom_menu_text("download"), callback_data="btn_download", emoji_key=None))
     return m
@@ -1129,7 +1133,7 @@ def support_text():
 
 def admin_texts_markup():
     m = InlineKeyboardMarkup()
-    names = {"shop":"🛒 Shop","profile":"👤 My Profile","balance":"💰 Add Balance","orders":"🛍 My Orders","referral":"👥 Referral","support":"🎧 Support","lucky":"🎲 Ludo","download":"📥 Download Files"}
+    names = {"shop":"🛒 Shop","profile":"👤 My Profile","balance":"💰 Add Balance","orders":"🛍 My Orders","referral":"👥 Referral","support":"🎧 Support","ludo":"🎲 Ludo Spin","download":"📥 Download Files"}
     for key, name in names.items():
         m.add(make_button(name, callback_data=f"admin_text|{key}", style="primary"))
     m.add(make_button("⬅️ BACK", callback_data="admin_back", style="danger"))
@@ -1304,7 +1308,7 @@ def admin_callback(call):
             "bot": {"shop_name": "text", "currency": "text", "usd_rate": "float"},
             "labels": {
                 "shop": "text", "profile": "text", "balance": "text", "orders": "text",
-                "referral": "text", "support": "text", "lucky": "text", "download": "text",
+                "referral": "text", "support": "text", "ludo": "text", "download": "text",
             },
             "messages": {
                 "welcome_title": "text", "choose_menu": "text", "verification_title": "text",
@@ -1418,7 +1422,7 @@ def admin_callback(call):
                 ("orders", "Orders Label"),
                 ("referral", "Referral Label"),
                 ("support", "Support Label"),
-                ("lucky", "Lucky Label"),
+                ("ludo", "Ludo Spin Label"),
                 ("download", "Download Label"),
             ]),
         )
