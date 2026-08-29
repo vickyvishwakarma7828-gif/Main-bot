@@ -441,7 +441,25 @@ def save_settings():
         json.dump(SETTINGS, f, indent=2, ensure_ascii=False)
 
 def get_setting(section, key, default=""):
+    # Custom text emojis are stored inside the custom_ui section.
+    if section == "text_emojis":
+        return (
+            SETTINGS.get("custom_ui", {})
+            .get("text_emojis", {})
+            .get(key, default)
+        )
     return SETTINGS.get(section, {}).get(key, default)
+
+
+def save_setting(section, key, value):
+    """Save one admin setting and persist it to the JSON settings file."""
+    if section == "text_emojis":
+        SETTINGS.setdefault("custom_ui", {}).setdefault("text_emojis", {})[key] = value
+        if key in TEXT_EMOJI_IDS:
+            TEXT_EMOJI_IDS[key] = value
+    else:
+        SETTINGS.setdefault(section, {})[key] = value
+    save_settings()
 
 # ============================================================
 # DATABASE
@@ -2153,7 +2171,7 @@ def normal_callback(call):
             )
             return
         spin_last[uid] = now
-        prizes = ["₹0:20", "₹0:10", "₹0:30", "₹0:23", "₹0:73"]
+        prizes = ["₹0", "₹0", "₹0", "₹5", "₹10"]
         prize = random.choice(prizes)
         bot.edit_message_text(
             f"<b>🎁 LUCKY RESULT</b>\n\nYou got: <b>{prize}</b>\n\nNext spin will be available later.",
