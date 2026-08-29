@@ -5,7 +5,7 @@ import json
 import sqlite3
 import random
 import html
-from nidatetime import datetime
+from datetime import datetime
 
 import telebot
 from telebot.types import (
