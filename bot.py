@@ -5,6 +5,7 @@ import json
 import sqlite3
 import random
 import html
+import time
 from datetime import datetime
 
 import telebot
@@ -18,16 +19,6 @@ from telebot.types import (
 
 # ============================================================
 # VICKY X MODE SHOP — CLEAN BOT + ADMIN CUSTOMIZER
-# ============================================================
-# Install:
-#   pip install pyTelegramBotAPI
-#
-# Environment variables:
-#   BOT_TOKEN=your_bot_token
-#   ADMIN_IDS=123456789,987654321
-#
-# The bot stores settings, users, orders and tickets in SQLite.
-# Custom emoji IDs and button styles are editable from /admin.
 # ============================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -46,137 +37,119 @@ DOWNLOAD_CHANNEL_URL = os.getenv("DOWNLOAD_CHANNEL_URL", "https://t.me/")
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 # ============================================================
-# CUSTOM EMOJI IDS — PRESERVED FROM YOUR CURRENT BOT
+# CUSTOM EMOJI IDS
 # ============================================================
 
-BUTTON_EMOJI_IDS = {'btn_store': '6185893851417288710',
- 'btn_profile': '6336927110820532369',
- 'btn_balance': '6210881885246071421',
- 'btn_history': '6091546510984489308',
- 'btn_referral': '6228554619107156165',
- 'btn_support': '6091629738860749835',
- 'btn_ludo': '6215049554006385615',
- 'btn_download': '6096153576374017965',
- 'pnl_nonroot': '6176770456117321712',
- 'pnl_root': '6176927918208327128',
- 'pnl_iphone': '6176694521095528166',
- 'pnl_pc': '6177008809622380876',
- 'btn_back': '5783006922412134612',
- 'ticket_open': '6098022179205552943',
- 'ticket_view': '6098259802566173550',
- 'contact_telegram': '6116375613843447262',
- 'contact_whatsapp': '6118193823823698862',
- 'btn_paytm_upi': '5807750375033278838',
- 'btn_binance_pay': '5843689746538173057',
- 'btn_bkash_pay': '6183582647910934266',
- 'btn_custom_amount': '6091602457228484185',
- 'num_1': '',
- 'num_2': '',
- 'num_3': '',
- 'num_4': '',
- 'num_5': '',
- 'num_6': '',
- 'num_7': '',
- 'num_8': '',
- 'num_9': '',
- 'num_0': '',
- 'num_clear': '',
- 'num_backspace': '',
- 'confirm_custom_pay': '',
- 'btn_dospin': '6215049554006385615',
- 'btn_download_channel': '6098187565511223942',
- 'app_drip': '6215104357789081549',
- 'app_drip_proxy': '6228505879818279884',
- 'app_hg_cheats_nr': '6174741174264274787',
- 'app_prime': '6176729559438728721',
- 'app_hg_proxy': '6177153481300779410',
- 'app_patorange': '6176951059492118363',
- 'app_patblue': '6176750480224427107',
- 'app_brmods_nr': '6174750459983568753',
- 'app_reaper_nr': '6176925238148734403',
- 'app_silent_nr': '6258011527752720019',
- 'app_ninex': '6066589735927684227',
- 'app_abcd': '6073643326358167296',
- 'app_pato_regedit': '6077695078246128827',
- 'app_aimhack': '6082561130163609059',
- 'app_brmods_root': '6176806052806271278',
- 'app_reaper_root': '6176925238148734403',
- 'app_drip_root': '6177010317155901114',
- 'app_hg_root': '6177153481300779410',
- 'app_stricks': '6210964571956452837',
- 'app_xyz': '6274067215016796076',
- 'app_hikari': '6210972363027127979',
- 'app_lk': '6177054593973755238',
- 'app_safe': '6258011527752720019',
- 'app_brutal': '6258011527752720019',
- 'app_xreg': '6260064698213867692',
- 'app_rapid': '6273984287788245654',
- 'app_haxx': '6177226117787689163',
- 'app_zytron': '6287048289812491443',
- 'app_angry': '6285027241411747436',
- 'app_scorpio_lite': '6192475588150698232',
- 'app_scorpio_brutal': '6192475588150698232',
- 'app_gbox': '6177058111551971096',
- 'app_esing': '6177239230322842849',
- 'app_fluorite': '6176752825276571004',
- 'app_migul_pro': '6208223631202328805',
- 'app_migul_basic': '6208223631202328805',
- 'app_alpha_regedit': '6176694521095528166',
- 'app_drip_pc': '6212834446098308655',
- 'app_brmods_pc': '6176806052806271278',
- 'app_only_exe': '6082441794497291724',
- 'btn_redeem': '',
- 'oos': ''}
+BUTTON_EMOJI_IDS = {
+    'btn_store': '6185893851417288710',
+    'btn_profile': '6336927110820532369',
+    'btn_balance': '6210881885246071421',
+    'btn_history': '6091546510984489308',
+    'btn_referral': '6228554619107156165',
+    'btn_support': '6091629738860749835',
+    'btn_ludo': '6215049554006385615',
+    'btn_download': '6096153576374017965',
+    'pnl_nonroot': '6176770456117321712',
+    'pnl_root': '6176927918208327128',
+    'pnl_iphone': '6176694521095528166',
+    'pnl_pc': '6177008809622380876',
+    'btn_back': '5783006922412134612',
+    'ticket_open': '6098022179205552943',
+    'ticket_view': '6098259802566173550',
+    'contact_telegram': '6116375613843447262',
+    'contact_whatsapp': '6118193823823698862',
+    'btn_paytm_upi': '5807750375033278838',
+    'btn_binance_pay': '5843689746538173057',
+    'btn_bkash_pay': '6183582647910934266',
+    'btn_custom_amount': '6091602457228484185',
+    'num_1': '', 'num_2': '', 'num_3': '', 'num_4': '', 'num_5': '',
+    'num_6': '', 'num_7': '', 'num_8': '', 'num_9': '', 'num_0': '',
+    'num_clear': '', 'num_backspace': '', 'confirm_custom_pay': '',
+    'btn_dospin': '6215049554006385615',
+    'btn_download_channel': '6098187565511223942',
+    'app_drip': '6215104357789081549',
+    'app_drip_proxy': '6228505879818279884',
+    'app_hg_cheats_nr': '6174741174264274787',
+    'app_prime': '6176729559438728721',
+    'app_hg_proxy': '6177153481300779410',
+    'app_patorange': '6176951059492118363',
+    'app_patblue': '6176750480224427107',
+    'app_brmods_nr': '6174750459983568753',
+    'app_reaper_nr': '6176925238148734403',
+    'app_silent_nr': '6258011527752720019',
+    'app_ninex': '6066589735927684227',
+    'app_abcd': '6073643326358167296',
+    'app_pato_regedit': '6077695078246128827',
+    'app_aimhack': '6082561130163609059',
+    'app_brmods_root': '6176806052806271278',
+    'app_reaper_root': '6176925238148734403',
+    'app_drip_root': '6177010317155901114',
+    'app_hg_root': '6177153481300779410',
+    'app_stricks': '6210964571956452837',
+    'app_xyz': '6274067215016796076',
+    'app_hikari': '6210972363027127979',
+    'app_lk': '6177054593973755238',
+    'app_safe': '6258011527752720019',
+    'app_brutal': '6258011527752720019',
+    'app_xreg': '6260064698213867692',
+    'app_rapid': '6273984287788245654',
+    'app_haxx': '6177226117787689163',
+    'app_zytron': '6287048289812491443',
+    'app_angry': '6285027241411747436',
+    'app_scorpio_lite': '6192475588150698232',
+    'app_scorpio_brutal': '6192475588150698232',
+    'app_gbox': '6177058111551971096',
+    'app_esing': '6177239230322842849',
+    'app_fluorite': '6176752825276571004',
+    'app_migul_pro': '6208223631202328805',
+    'app_migul_basic': '6208223631202328805',
+    'app_alpha_regedit': '6176694521095528166',
+    'app_drip_pc': '6212834446098308655',
+    'app_brmods_pc': '6176806052806271278',
+    'app_only_exe': '6082441794497291724',
+    'btn_redeem': '',
+    'oos': ''
+}
 
-TEXT_EMOJI_IDS = {'welcome_title_left': '5278702045883292456',
- 'welcome_title_right': '5278702045883292456',
- 'welcome_hello': '6089368451464306782',
- 'welcome_delivery': '5312016608254762256',
- 'welcome_automated': '6143153931775122567',
- 'welcome_support': '6091629738860749835',
- 'welcome_prices': '6334379323335644926',
- 'store_title': '6185893851417288710',
- 'store_premium': '6215039782955783886',
- 'store_delivery': '6334602442591700514',
- 'store_verified': '6179479038587834843',
- 'store_trusted': '6186211975349935992',
- 'balance_title_left': '6210881885246071421',
- 'balance_title_right': '5904248647972820334',
- 'balance_description_left': '6161437856662298090',
- 'balance_description_right': '5904248647972820334',
- 'balance_upi': '5807750375033278838',
- 'what_you_get': '6161437856662298090',
- 'latest_updates': '6161126548842750657',
- 'virus_free': '6161329915544214876',
- 'configs_scripts': '6161309969716093248',
- 'installation_guides': '6161427832208630325',
- 'support_title_left': '6118193823823698862',
- 'support_title_right': '6116375613843447262',
- 'referral_title_left': '6033125983572201397',
- 'referral_title_right': '6033125983572201397',
- 'referral_status': '5429651785352501917',
- 'referral_earn_left': '6183582647910934266',
- 'referral_earn_right': '6186035477963875101',
- 'referral_total_referred': '6186035477963875101',
- 'referral_total_earned': '6334317759274424191',
- 'referral_invite': '5307989264665942707'}
+TEXT_EMOJI_IDS = {
+    'welcome_title_left': '5278702045883292456',
+    'welcome_title_right': '5278702045883292456',
+    'welcome_hello': '6089368451464306782',
+    'welcome_delivery': '5312016608254762256',
+    'welcome_automated': '6143153931775122567',
+    'welcome_support': '6091629738860749835',
+    'welcome_prices': '6334379323335644926',
+    'store_title': '6185893851417288710',
+    'store_premium': '6215039782955783886',
+    'store_delivery': '6334602442591700514',
+    'store_verified': '6179479038587834843',
+    'store_trusted': '6186211975349935992',
+    'balance_title_left': '6210881885246071421',
+    'balance_title_right': '5904248647972820334',
+    'balance_description_left': '6161437856662298090',
+    'balance_description_right': '5904248647972820334',
+    'balance_upi': '5807750375033278838',
+    'what_you_get': '6161437856662298090',
+    'latest_updates': '6161126548842750657',
+    'virus_free': '6161329915544214876',
+    'configs_scripts': '6161309969716093248',
+    'installation_guides': '6161427832208630325',
+    'support_title_left': '6118193823823698862',
+    'support_title_right': '6116375613843447262',
+    'referral_title_left': '6033125983572201397',
+    'referral_title_right': '6033125983572201397',
+    'referral_status': '5429651785352501917',
+    'referral_earn_left': '6183582647910934266',
+    'referral_earn_right': '6186035477963875101',
+    'referral_total_referred': '6186035477963875101',
+    'referral_total_earned': '6334317759274424191',
+    'referral_invite': '5307989264665942707'
+}
 
 # ============================================================
 # BUTTON STYLE SYSTEM
 # ============================================================
-# Telegram supported styles:
-#   primary = blue
-#   success = green
-#   danger  = red
-#
-# BACK buttons are automatically danger.
-# BUY buttons are automatically success.
-# OUT-OF-STOCK buttons are automatically danger.
-# ============================================================
 
-# ============================================================
-# ADMIN TEXT + CUSTOM EMOJI SETTINGS
-# ============================================================
 TEXT_DEFAULTS = {
     "shop": "Shop", "profile": "My Profile", "balance": "Add Balance",
     "orders": "My Orders", "referral": "Referral", "support": "Support",
@@ -193,149 +166,103 @@ def custom_menu_text(key):
     right = custom_emoji(emojis.get("right", ""), "") if emojis.get("right") else ""
     return f"{left}{text}{right}"
 
-BUTTON_STYLES = {'btn_store': 'primary',
- 'btn_profile': 'success',
- 'btn_balance': 'success',
- 'btn_history': 'primary',
- 'btn_referral': 'primary',
- 'btn_support': 'success',
- 'btn_ludo': 'success',
- 'btn_download': 'primary',
- 'pnl_nonroot': 'primary',
- 'pnl_root': 'primary',
- 'pnl_iphone': 'primary',
- 'pnl_pc': 'primary',
- 'btn_back': 'danger',
- 'ticket_open': 'success',
- 'ticket_view': 'success',
- 'contact_telegram': 'success',
- 'contact_whatsapp': 'success',
- 'btn_paytm_upi': 'success',
- 'btn_binance_pay': 'primary',
- 'btn_bkash_pay': 'success',
- 'btn_custom_amount': 'primary',
- 'pay_quick_100': 'success',
- 'pay_quick_500': 'success',
- 'pay_quick_1000': 'success',
- 'pay_quick_2000': 'success',
- 'num_1': 'primary',
- 'num_2': 'primary',
- 'num_3': 'primary',
- 'num_4': 'primary',
- 'num_5': 'primary',
- 'num_6': 'primary',
- 'num_7': 'primary',
- 'num_8': 'primary',
- 'num_9': 'primary',
- 'num_0': 'primary',
- 'num_clear': 'danger',
- 'num_backspace': 'danger',
- 'confirm_custom_pay': 'success',
- 'btn_dospin': 'success',
- 'btn_download_channel': 'success',
- 'btn_redeem': 'success',
- 'oos': 'danger'}
+BUTTON_STYLES = {
+    'btn_store': 'primary', 'btn_profile': 'success', 'btn_balance': 'success',
+    'btn_history': 'primary', 'btn_referral': 'primary', 'btn_support': 'success',
+    'btn_ludo': 'success', 'btn_download': 'primary', 'pnl_nonroot': 'primary',
+    'pnl_root': 'primary', 'pnl_iphone': 'primary', 'pnl_pc': 'primary',
+    'btn_back': 'danger', 'ticket_open': 'success', 'ticket_view': 'success',
+    'contact_telegram': 'success', 'contact_whatsapp': 'success',
+    'btn_paytm_upi': 'success', 'btn_binance_pay': 'primary',
+    'btn_bkash_pay': 'success', 'btn_custom_amount': 'primary',
+    'pay_quick_100': 'success', 'pay_quick_500': 'success',
+    'pay_quick_1000': 'success', 'pay_quick_2000': 'success',
+    'num_1': 'primary', 'num_2': 'primary', 'num_3': 'primary',
+    'num_4': 'primary', 'num_5': 'primary', 'num_6': 'primary',
+    'num_7': 'primary', 'num_8': 'primary', 'num_9': 'primary',
+    'num_0': 'primary', 'num_clear': 'danger', 'num_backspace': 'danger',
+    'confirm_custom_pay': 'success', 'btn_dospin': 'success',
+    'btn_download_channel': 'success', 'btn_redeem': 'success', 'oos': 'danger'
+}
 
 STYLE_VALUES = {"primary", "success", "danger"}
 
 # ============================================================
-# PRODUCT CATALOG — PRESERVED FROM YOUR CURRENT BOT
+# PRODUCT CATALOG
 # ============================================================
 
-DEFAULT_CATALOG = {'vala_mod': {'name': 'VALA MOD APK',
-              '1 Hour': 45,
-              '3 Hours': 100,
-              '6 Hours': 150,
-              '12 Hours': 250,
-              '24 Hours': 400},
- 'drip': {'name': 'Drip Client Apk', 1: 80, 3: 160, 7: 270, 15: 420, 30: 620},
- 'drip_proxy': {'name': 'Drip Client Proxy Apk', 1: 80, 3: 160, 7: 270, 30: 620},
- 'hg_cheats_nr': {'name': 'Hg Cheats Apk', 1: 55, 7: 140, 10: 179, 30: 425},
- 'prime': {'name': 'Prime Hook Apk', 1: 95, 3: 160, 7: 315},
- 'hg_proxy': {'name': 'Hg Proxy Apk', 1: 100, 7: 240, 10: 310, 30: 605},
- 'patorange': {'name': 'Patoteam Orange', 3: 230, 7: 370, 15: 605, 30: 960},
- 'patblue': {'name': 'Patoteam Blue', 3: 265, 7: 440, 15: 640, 30: 1020},
- 'brmods_nr': {'name': 'Br Mods Non Root', 1: 90, 7: 270, 15: 460, 30: 640},
- 'reaper_nr': {'name': 'Reaper xPro Apk', 10: 365, 30: 900},
- 'silent_nr': {'name': 'Silent Cheats Apkmod', 1: 110, 3: 200, 7: 370, 14: 620, 28: 920},
- 'ninex': {'name': 'NineX Mod Injector', 10: 420, 20: 800, 30: 1200},
- 'abcd': {'name': 'ABCD Panel', '12 Hours': 30, 1: 90, 3: 150, 7: 200},
- 'pato_regedit': {'name': 'Patoteam Regedit Orange', 3: 200, 7: 330, 15: 500, 30: 920},
- 'aimhack': {'name': 'AimHack Apk', '1 Hour': 20, '3 Hours': 35, '6 Hours': 55, '12 Hours': 110},
- 'brmods_root': {'name': 'Br Mods Apk', 1: 79, 7: 260, 15: 440, 30: 620},
- 'reaper_root': {'name': 'Reaper x Pro', 10: 345, 30: 795},
- 'drip_root': {'name': 'Drip Client Root', 1: 70, 7: 320, 30: 650},
- 'hg_root': {'name': 'Hg Cheats Apk (Root)', 1: 80, 7: 190, 10: 290, 30: 590},
- 'stricks': {'name': 'Stricks Br ~ Alpha', 1: 70, 5: 160, 7: 250, 15: 450, 30: 600},
- 'xyz': {'name': 'Xyz Cheats Apk', 1: 70, 3: 150, 7: 300, 15: 500, 30: 790},
- 'hikari': {'name': 'Hikari Mod Apk', 1: 70, 3: 149, 7: 299, 15: 499, 30: 799},
- 'lk': {'name': 'LK Team Apk', 1: 80, 5: 170, 10: 250, 30: 690},
- 'safe': {'name': 'Silent Cheats [Safe]', 1: 80, 3: 170, 7: 340, 14: 580, 28: 850},
- 'brutal': {'name': 'Silent Cheats [Brutal]', 1: 80, 3: 170, 7: 340, 14: 585, 30: 895},
- 'xreg': {'name': 'Xreg Safe Apk', 1: 90, 10: 300, 20: 500, 30: 680},
- 'rapid': {'name': 'Rapid Core Apk', 1: 89, 7: 299, 14: 549, 30: 1099},
- 'haxx': {'name': 'Haxx-cker Pro', 10: 545, 20: 1030, 30: 1400},
- 'zytron': {'name': 'Zytron Pro Apk', 1: 80, 7: 320, 15: 480, 30: 620},
- 'angry': {'name': 'Angry Mod Apk', 1: 75, 7: 320, 15: 530, 30: 750},
- 'scorpio_lite': {'name': 'Scorpio Mods [Lite]', 7: 240, 15: 400, 30: 600},
- 'scorpio_brutal': {'name': 'Scorpio Mods [Brutal]', 7: 300, 15: 450, 30: 800},
- 'gbox': {'name': 'Gbox Certificate', '1 year validity': 1000},
- 'esing': {'name': 'Esing Certificate', '1 year validity': 500},
- 'fluorite': {'name': 'Fluorite Ios', 1: 390, 7: 1240, 31: 2000},
- 'migul_pro': {'name': 'Migul ~ Pro', 1: 300, 7: 890, 31: 1700},
- 'migul_basic': {'name': 'Migul ~ Basic', 1: 220, 7: 530, 31: 1320},
- 'alpha_regedit': {'name': 'AlphaRegedit External', 1: 90, 3: 180, 7: 350, 30: 800},
- 'drip_pc': {'name': 'Drip Client Pc', 1: 150, 7: 360, 15: 650, 30: 1020},
- 'brmods_pc': {'name': 'Br Mods Pc', 1: 85, 10: 350, 30: 690},
- 'only_exe': {'name': 'Only Exe Aimkill', 1: 60, 3: 150, 7: 290, 30: 780}}
+DEFAULT_CATALOG = {
+    'vala_mod': {'name': 'VALA MOD APK', '1 Hour': 45, '3 Hours': 100, '6 Hours': 150, '12 Hours': 250, '24 Hours': 400},
+    'drip': {'name': 'Drip Client Apk', 1: 80, 3: 160, 7: 270, 15: 420, 30: 620},
+    'drip_proxy': {'name': 'Drip Client Proxy Apk', 1: 80, 3: 160, 7: 270, 30: 620},
+    'hg_cheats_nr': {'name': 'Hg Cheats Apk', 1: 55, 7: 140, 10: 179, 30: 425},
+    'prime': {'name': 'Prime Hook Apk', 1: 95, 3: 160, 7: 315},
+    'hg_proxy': {'name': 'Hg Proxy Apk', 1: 100, 7: 240, 10: 310, 30: 605},
+    'patorange': {'name': 'Patoteam Orange', 3: 230, 7: 370, 15: 605, 30: 960},
+    'patblue': {'name': 'Patoteam Blue', 3: 265, 7: 440, 15: 640, 30: 1020},
+    'brmods_nr': {'name': 'Br Mods Non Root', 1: 90, 7: 270, 15: 460, 30: 640},
+    'reaper_nr': {'name': 'Reaper xPro Apk', 10: 365, 30: 900},
+    'silent_nr': {'name': 'Silent Cheats Apkmod', 1: 110, 3: 200, 7: 370, 14: 620, 28: 920},
+    'ninex': {'name': 'NineX Mod Injector', 10: 420, 20: 800, 30: 1200},
+    'abcd': {'name': 'ABCD Panel', '12 Hours': 30, 1: 90, 3: 150, 7: 200},
+    'pato_regedit': {'name': 'Patoteam Regedit Orange', 3: 200, 7: 330, 15: 500, 30: 920},
+    'aimhack': {'name': 'AimHack Apk', '1 Hour': 20, '3 Hours': 35, '6 Hours': 55, '12 Hours': 110},
+    'brmods_root': {'name': 'Br Mods Apk', 1: 79, 7: 260, 15: 440, 30: 620},
+    'reaper_root': {'name': 'Reaper x Pro', 10: 345, 30: 795},
+    'drip_root': {'name': 'Drip Client Root', 1: 70, 7: 320, 30: 650},
+    'hg_root': {'name': 'Hg Cheats Apk (Root)', 1: 80, 7: 190, 10: 290, 30: 590},
+    'stricks': {'name': 'Stricks Br ~ Alpha', 1: 70, 5: 160, 7: 250, 15: 450, 30: 600},
+    'xyz': {'name': 'Xyz Cheats Apk', 1: 70, 3: 150, 7: 300, 15: 500, 30: 790},
+    'hikari': {'name': 'Hikari Mod Apk', 1: 70, 3: 149, 7: 299, 15: 499, 30: 799},
+    'lk': {'name': 'LK Team Apk', 1: 80, 5: 170, 10: 250, 30: 690},
+    'safe': {'name': 'Silent Cheats [Safe]', 1: 80, 3: 170, 7: 340, 14: 580, 28: 850},
+    'brutal': {'name': 'Silent Cheats [Brutal]', 1: 80, 3: 170, 7: 340, 14: 585, 30: 895},
+    'xreg': {'name': 'Xreg Safe Apk', 1: 90, 10: 300, 20: 500, 30: 680},
+    'rapid': {'name': 'Rapid Core Apk', 1: 89, 7: 299, 14: 549, 30: 1099},
+    'haxx': {'name': 'Haxx-cker Pro', 10: 545, 20: 1030, 30: 1400},
+    'zytron': {'name': 'Zytron Pro Apk', 1: 80, 7: 320, 15: 480, 30: 620},
+    'angry': {'name': 'Angry Mod Apk', 1: 75, 7: 320, 15: 530, 30: 750},
+    'scorpio_lite': {'name': 'Scorpio Mods [Lite]', 7: 240, 15: 400, 30: 600},
+    'scorpio_brutal': {'name': 'Scorpio Mods [Brutal]', 7: 300, 15: 450, 30: 800},
+    'gbox': {'name': 'Gbox Certificate', '1 year validity': 1000},
+    'esing': {'name': 'Esing Certificate', '1 year validity': 500},
+    'fluorite': {'name': 'Fluorite Ios', 1: 390, 7: 1240, 31: 2000},
+    'migul_pro': {'name': 'Migul ~ Pro', 1: 300, 7: 890, 31: 1700},
+    'migul_basic': {'name': 'Migul ~ Basic', 1: 220, 7: 530, 31: 1320},
+    'alpha_regedit': {'name': 'AlphaRegedit External', 1: 90, 3: 180, 7: 350, 30: 800},
+    'drip_pc': {'name': 'Drip Client Pc', 1: 150, 7: 360, 15: 650, 30: 1020},
+    'brmods_pc': {'name': 'Br Mods Pc', 1: 85, 10: 350, 30: 690},
+    'only_exe': {'name': 'Only Exe Aimkill', 1: 60, 3: 150, 7: 290, 30: 780}
+}
 
 PANEL_ITEMS = {
     "pnl_nonroot": [
-        ("Drip Client Apk", "app_drip"),
-        ("Drip Client Proxy Apk", "app_drip_proxy"),
-        ("Hg Cheats Apk", "app_hg_cheats_nr"),
-        ("Prime Hook Apk", "app_prime"),
-        ("Hg Proxy Apk", "app_hg_proxy"),
-        ("Patoteam Orange", "app_patorange"),
-        ("Patoteam Blue", "app_patblue"),
-        ("Br Mods Non Root", "app_brmods_nr"),
-        ("Reaper xPro Apk", "app_reaper_nr"),
-        ("Silent Cheats Apkmod", "app_silent_nr"),
-        ("NineX Mod Injector", "app_ninex"),
-        ("ABCD Panel", "app_abcd"),
-        ("Patoteam Regedit Orange", "app_pato_regedit"),
-        ("AimHack Apk", "app_aimhack"),
+        ("Drip Client Apk", "app_drip"), ("Drip Client Proxy Apk", "app_drip_proxy"),
+        ("Hg Cheats Apk", "app_hg_cheats_nr"), ("Prime Hook Apk", "app_prime"),
+        ("Hg Proxy Apk", "app_hg_proxy"), ("Patoteam Orange", "app_patorange"),
+        ("Patoteam Blue", "app_patblue"), ("Br Mods Non Root", "app_brmods_nr"),
+        ("Reaper xPro Apk", "app_reaper_nr"), ("Silent Cheats Apkmod", "app_silent_nr"),
+        ("NineX Mod Injector", "app_ninex"), ("ABCD Panel", "app_abcd"),
+        ("Patoteam Regedit Orange", "app_pato_regedit"), ("AimHack Apk", "app_aimhack"),
     ],
     "pnl_root": [
-        ("Br Mods Apk", "app_brmods_root"),
-        ("Reaper x Pro", "app_reaper_root"),
-        ("Drip Client Root", "app_drip_root"),
-        ("Hg Cheats Apk", "app_hg_root"),
-        ("Stricks Br ~ Alpha", "app_stricks"),
-        ("Xyz Cheats Apk", "app_xyz"),
-        ("Hikari Mod Apk", "app_hikari"),
-        ("Lk Team Apk", "app_lk"),
-        ("Silent Cheats [Safe]", "app_safe"),
-        ("Silent Cheats [Brutal]", "app_brutal"),
-        ("Xreg Safe Apk", "app_xreg"),
-        ("Rapid Core Apk", "app_rapid"),
-        ("Haxx-cker Pro", "app_haxx"),
-        ("Zytron Pro Apk", "app_zytron"),
-        ("Angry Mod Apk", "app_angry"),
-        ("Scorpio Mods [Lite]", "app_scorpio_lite"),
+        ("Br Mods Apk", "app_brmods_root"), ("Reaper x Pro", "app_reaper_root"),
+        ("Drip Client Root", "app_drip_root"), ("Hg Cheats Apk", "app_hg_root"),
+        ("Stricks Br ~ Alpha", "app_stricks"), ("Xyz Cheats Apk", "app_xyz"),
+        ("Hikari Mod Apk", "app_hikari"), ("Lk Team Apk", "app_lk"),
+        ("Silent Cheats [Safe]", "app_safe"), ("Silent Cheats [Brutal]", "app_brutal"),
+        ("Xreg Safe Apk", "app_xreg"), ("Rapid Core Apk", "app_rapid"),
+        ("Haxx-cker Pro", "app_haxx"), ("Zytron Pro Apk", "app_zytron"),
+        ("Angry Mod Apk", "app_angry"), ("Scorpio Mods [Lite]", "app_scorpio_lite"),
         ("Scorpio Mods [Brutal]", "app_scorpio_brutal"),
     ],
     "pnl_iphone": [
-        ("Gbox Certificate", "app_gbox"),
-        ("Esing Certificate", "app_esing"),
-        ("Fluorite Ios", "app_fluorite"),
-        ("Migul ~ Pro", "app_migul_pro"),
-        ("Migul ~ Basic", "app_migul_basic"),
-        ("AlphaRegedit External", "app_alpha_regedit"),
+        ("Gbox Certificate", "app_gbox"), ("Esing Certificate", "app_esing"),
+        ("Fluorite Ios", "app_fluorite"), ("Migul ~ Pro", "app_migul_pro"),
+        ("Migul ~ Basic", "app_migul_basic"), ("AlphaRegedit External", "app_alpha_regedit"),
     ],
     "pnl_pc": [
-        ("Drip Client Pc", "app_drip_pc"),
-        ("Br Mods Pc", "app_brmods_pc"),
+        ("Drip Client Pc", "app_drip_pc"), ("Br Mods Pc", "app_brmods_pc"),
         ("Only Exe Aimkill", "app_only_exe"),
     ],
 }
@@ -345,26 +272,13 @@ PANEL_ITEMS = {
 # ============================================================
 
 DEFAULT_SETTINGS = {
-    "bot": {
-        "shop_name": "VICKY X MODE SHOP",
-        "currency": "₹",
-        "usd_rate": 90.0,
-    },
+    "bot": {"shop_name": "VICKY X MODE SHOP", "currency": "₹", "usd_rate": 90.0},
     "labels": {
-        "shop": "Shop",
-        "profile": "My Profile",
-        "balance": "Add Balance",
-        "orders": "My Orders",
-        "referral": "Referral",
-        "support": "Support",
-        "ludo": "Ludo Spin",
-        "download": "Download Files",
+        "shop": "Shop", "profile": "My Profile", "balance": "Add Balance",
+        "orders": "My Orders", "referral": "Referral", "support": "Support",
+        "ludo": "Ludo Spin", "download": "Download Files",
     },
-    "custom_ui": {
-        "button_styles": {},
-        "button_emojis": {},
-        "text_emojis": {},
-    },
+    "custom_ui": {"button_styles": {}, "button_emojis": {}, "text_emojis": {}},
     "messages": {
         "welcome_title": "WELCOME TO VICKY X MODE SHOP",
         "choose_menu": "Select An Option From The Menu Below :",
@@ -374,29 +288,13 @@ DEFAULT_SETTINGS = {
         "support_title": "PREMIUM SUPPORT CENTER",
     },
     "payment": {
-        "upi_id": "vicky3198737@axl",
-        "binance_pay_id": "123456789",
-        "bkash_number": "01700000000",
-        "min_amount": 50,
-        "max_amount": 2000,
+        "upi_id": "vicky3198737@axl", "binance_pay_id": "123456789",
+        "bkash_number": "01700000000", "min_amount": 50, "max_amount": 2000,
     },
-    "support": {
-        "telegram_username": "VICKYXMOD",
-        "whatsapp_number": "918303304640",
-    },
-    "referral": {
-        "enabled": True,
-        "commission_percent": 15.0,
-    },
-    "ludo": {
-        "enabled": True,
-        "cooldown_hours": 24.0,
-    },
+    "support": {"telegram_username": "VICKYXMOD", "whatsapp_number": "918303304640"},
+    "referral": {"enabled": True, "commission_percent": 15.0},
+    "ludo": {"enabled": True, "cooldown_hours": 24.0},
 }
-
-# ============================================================
-# JSON SETTINGS
-# ============================================================
 
 def deep_copy(obj):
     return json.loads(json.dumps(obj))
@@ -410,8 +308,6 @@ def load_settings():
             for section, values in saved.items():
                 if isinstance(values, dict) and section in data:
                     data[section].update(values)
-            # Older versions called the Ludo main-menu label "lucky".
-            # If an old settings file has that key, use it for the new "ludo" key.
             if isinstance(saved.get("labels"), dict) and "ludo" not in saved["labels"] and "lucky" in saved["labels"]:
                 data["labels"]["ludo"] = saved["labels"]["lucky"]
         except Exception:
@@ -445,18 +341,11 @@ def save_settings():
         json.dump(SETTINGS, f, indent=2, ensure_ascii=False)
 
 def get_setting(section, key, default=""):
-    # Custom text emojis are stored inside the custom_ui section.
     if section == "text_emojis":
-        return (
-            SETTINGS.get("custom_ui", {})
-            .get("text_emojis", {})
-            .get(key, default)
-        )
+        return SETTINGS.get("custom_ui", {}).get("text_emojis", {}).get(key, default)
     return SETTINGS.get(section, {}).get(key, default)
 
-
 def save_setting(section, key, value):
-    """Save one admin setting and persist it to the JSON settings file."""
     if section == "text_emojis":
         SETTINGS.setdefault("custom_ui", {}).setdefault("text_emojis", {})[key] = value
         if key in TEXT_EMOJI_IDS:
@@ -601,7 +490,6 @@ def E_LUDO():
 def get_button_style(callback_data="", text="", explicit=None):
     cb = str(callback_data or "")
     txt = str(text or "")
-    # Admin-selected style wins for buttons that have a configurable key.
     if cb in BUTTON_STYLES and BUTTON_STYLES.get(cb) in STYLE_VALUES:
         return BUTTON_STYLES[cb]
     if explicit in STYLE_VALUES:
@@ -622,32 +510,11 @@ def make_button(
     emoji_key=None,
     fallback_emoji="🔹",
 ):
-    # For inline buttons, the custom emoji appears as Telegram's button icon.
     kwargs = {"text": str(text)}
     if callback_data is not None:
         kwargs["callback_data"] = str(callback_data)
     if url is not None:
         kwargs["url"] = url
-
-    key = emoji_key or (str(callback_data) if callback_data is not None else "")
-    emoji_id = BUTTON_EMOJI_IDS.get(key, "")
-
-    if not emoji_id and key.startswith("buy_"):
-        parts = key.split("_")
-        if len(parts) >= 3:
-            emoji_id = BUTTON_EMOJI_IDS.get("app_" + "_".join(parts[1:-1]), "")
-    if not emoji_id and key.startswith("oos_"):
-        parts = key.split("_")
-        if len(parts) >= 3:
-            emoji_id = BUTTON_EMOJI_IDS.get("app_" + "_".join(parts[1:-1]), "")
-
-    if emoji_id:
-        kwargs["icon_custom_emoji_id"] = str(emoji_id)
-
-    # style is a current Telegram Bot API inline-button property.
-    chosen_style = get_button_style(callback_data, text, style)
-    if chosen_style in STYLE_VALUES:
-        kwargs["style"] = chosen_style
 
     return InlineKeyboardButton(**kwargs)
 
@@ -705,10 +572,9 @@ def blocked(user_id):
     return bool(row and row["blocked"])
 
 def get_stock_count(app_code):
-    # Optional local stock file: app_code_keys.txt
     filename = f"{app_code}_keys.txt"
     if not os.path.exists(filename):
-        return 999999  # Catalog works even when no stock file is configured.
+        return 999999
     try:
         with open(filename, "r", encoding="utf-8") as f:
             return sum(1 for line in f if line.strip())
@@ -729,25 +595,24 @@ def duration_text(duration):
 
 def main_menu_markup():
     m = InlineKeyboardMarkup()
-    m.add(make_button(custom_menu_text("shop"), callback_data="btn_store", emoji_key=None))
+    m.add(make_button(custom_menu_text("shop"), callback_data="btn_store"))
     m.row(
-        make_button(custom_menu_text("profile"), callback_data="btn_profile", emoji_key=None),
-        make_button(custom_menu_text("balance"), callback_data="btn_balance", emoji_key=None),
+        make_button(custom_menu_text("profile"), callback_data="btn_profile"),
+        make_button(custom_menu_text("balance"), callback_data="btn_balance"),
     )
     m.row(
-        make_button(custom_menu_text("orders"), callback_data="btn_history", emoji_key=None),
-        make_button(custom_menu_text("referral"), callback_data="btn_referral", emoji_key=None),
+        make_button(custom_menu_text("orders"), callback_data="btn_history"),
+        make_button(custom_menu_text("referral"), callback_data="btn_referral"),
     )
     m.row(
-        make_button(custom_menu_text("support"), callback_data="btn_support", emoji_key=None),
-        make_button(custom_menu_text("ludo"), callback_data="btn_ludo", emoji_key=None),
+        make_button(custom_menu_text("support"), callback_data="btn_support"),
+        make_button(custom_menu_text("ludo"), callback_data="btn_ludo"),
     )
-    m.add(make_button(custom_menu_text("download"), callback_data="btn_download", emoji_key=None))
+    m.add(make_button(custom_menu_text("download"), callback_data="btn_download"))
     return m
 
 def show_main_menu(chat_id, name="User"):
     shop_name = get_setting("bot", "shop_name", "VICKY X MODE SHOP")
-    title = get_setting("messages", "welcome_title", "WELCOME TO VICKY X MODE SHOP")
     choose = get_setting("messages", "choose_menu", "Select An Option From The Menu Below :")
 
     text = (
@@ -779,7 +644,6 @@ def start(message):
         bot.send_message(message.chat.id, "<b>Access blocked.</b>\nPlease contact admin.")
         return
 
-    # Referral payload
     payload = ""
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) == 2:
@@ -795,7 +659,6 @@ def start(message):
             conn.commit()
         conn.close()
 
-    # This bot keeps contact verification optional so users can open the shop.
     show_main_menu(message.chat.id, message.from_user.first_name or "User")
 
 @bot.message_handler(content_types=["contact"])
@@ -814,11 +677,11 @@ def contact(message):
 
 def panel_markup():
     m = InlineKeyboardMarkup()
-    m.add(make_button("ANDROID NON ROOT PANEL", callback_data="pnl_nonroot", style="primary", emoji_key="pnl_nonroot"))
-    m.add(make_button("ANDROID ROOT PANEL", callback_data="pnl_root", style="primary", emoji_key="pnl_root"))
-    m.add(make_button("IPHONE PANEL", callback_data="pnl_iphone", style="primary", emoji_key="pnl_iphone"))
-    m.add(make_button("PC PANEL", callback_data="pnl_pc", style="primary", emoji_key="pnl_pc"))
-    m.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+    m.add(make_button("ANDROID NON ROOT PANEL", callback_data="pnl_nonroot", style="primary"))
+    m.add(make_button("ANDROID ROOT PANEL", callback_data="pnl_root", style="primary"))
+    m.add(make_button("IPHONE PANEL", callback_data="pnl_iphone", style="primary"))
+    m.add(make_button("PC PANEL", callback_data="pnl_pc", style="primary"))
+    m.add(make_button("BACK", callback_data="btn_back", style="danger"))
     return m
 
 def store_text():
@@ -843,13 +706,11 @@ def show_store(chat_id, message_id=None):
         bot.send_message(chat_id, store_text(), reply_markup=panel_markup())
 
 def get_panel_items(panel):
-    """Return default + admin-added products for a category."""
     items = []
     seen = set()
     for label, cb in PANEL_ITEMS.get(panel, []):
         app_code = cb.replace("app_", "", 1)
         if app_code in CATALOG:
-            # Use the current product name so admin renames are immediately visible.
             label = CATALOG.get(app_code, {}).get("name", label)
             items.append((label, cb))
             seen.add(app_code)
@@ -872,8 +733,8 @@ def get_product_panel(app_code):
 def panel_list_markup(panel):
     m = InlineKeyboardMarkup()
     for label, cb in get_panel_items(panel):
-        m.add(make_button(label, callback_data=cb, emoji_key=cb))
-    m.add(make_button("BACK TO PANELS", callback_data="btn_store", style="danger", emoji_key="btn_back"))
+        m.add(make_button(label, callback_data=cb))
+    m.add(make_button("BACK TO PANELS", callback_data="btn_store", style="danger"))
     return m
 
 def show_panel(call, panel):
@@ -901,18 +762,16 @@ def product_markup(app_code, stock):
                 f"Buy {label} - {money(price)} (~ ${usd(price):.2f})",
                 callback_data=f"buy_{app_code}_{duration}",
                 style="success",
-                emoji_key=f"app_{app_code}",
             ))
         else:
             m.add(make_button(
                 f"{label} (Out of Stock)",
                 callback_data=f"oos_{app_code}_{duration}",
                 style="danger",
-                emoji_key=f"app_{app_code}",
             ))
 
     back = get_product_panel(app_code)
-    m.add(make_button("BACK TO PANELS", callback_data=back, style="danger", emoji_key="btn_back"))
+    m.add(make_button("BACK TO PANELS", callback_data=back, style="danger"))
     return m
 
 def show_product(call, app_code):
@@ -1035,11 +894,11 @@ def referral_text(uid, username):
 def balance_markup():
     m = InlineKeyboardMarkup()
     m.row(
-        make_button("Paytm UPI", callback_data="btn_paytm_upi", style="success", emoji_key="btn_paytm_upi"),
-        make_button("Binance Pay", callback_data="btn_binance_pay", style="primary", emoji_key="btn_binance_pay"),
+        make_button("Paytm UPI", callback_data="btn_paytm_upi", style="success"),
+        make_button("Binance Pay", callback_data="btn_binance_pay", style="primary"),
     )
-    m.add(make_button("bKash (taka)", callback_data="btn_bkash_pay", style="success", emoji_key="btn_bkash_pay"))
-    m.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+    m.add(make_button("bKash (taka)", callback_data="btn_bkash_pay", style="success"))
+    m.add(make_button("BACK", callback_data="btn_back", style="danger"))
     return m
 
 def balance_text(uid):
@@ -1064,8 +923,8 @@ def payment_quick_markup():
         make_button("₹1000", callback_data="pay_quick_1000", style="success"),
         make_button("₹2000", callback_data="pay_quick_2000", style="success"),
     )
-    m.add(make_button("Custom Amount", callback_data="btn_custom_amount", style="primary", emoji_key="btn_custom_amount"))
-    m.add(make_button("Back", callback_data="btn_balance", style="danger", emoji_key="btn_back"))
+    m.add(make_button("Custom Amount", callback_data="btn_custom_amount", style="primary"))
+    m.add(make_button("Back", callback_data="btn_balance", style="danger"))
     return m
 
 def keypad_markup(value):
@@ -1075,15 +934,14 @@ def keypad_markup(value):
         for x in row:
             cb = {"C":"num_clear","⌫":"num_backspace"}.get(x, f"num_{x}")
             style = "danger" if cb in ("num_clear","num_backspace") else "primary"
-            buttons.append(make_button(x, callback_data=cb, style=style, emoji_key=cb))
+            buttons.append(make_button(x, callback_data=cb, style=style))
         m.row(*buttons)
     m.add(make_button(f"Confirm ₹{value}", callback_data="confirm_custom_pay", style="success"))
-    m.add(make_button("Back", callback_data="btn_paytm_upi", style="danger", emoji_key="btn_back"))
+    m.add(make_button("Back", callback_data="btn_paytm_upi", style="danger"))
     return m
 
 def send_upi_payment(chat_id, amount):
     upi_id = str(get_setting("payment", "upi_id", "")).strip()
-    # QR is intentionally a normal payment URI. User should verify payment manually.
     import urllib.parse
     uri = f"upi://pay?pa={urllib.parse.quote(upi_id)}&pn=Vicky%20Store&am={amount}&cu=INR"
     qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + urllib.parse.quote(uri, safe="")
@@ -1108,14 +966,14 @@ def support_markup():
     tg = clean_admin()
     wa = str(get_setting("support", "whatsapp_number", "")).strip()
     if tg:
-        m.add(make_button("Contact on Telegram", url=f"https://t.me/{tg}", style="success", emoji_key="contact_telegram"))
+        m.add(make_button("Contact on Telegram", url=f"https://t.me/{tg}", style="success"))
     if wa:
-        m.add(make_button("Contact on WhatsApp", url=f"https://wa.me/{wa}", style="success", emoji_key="contact_whatsapp"))
+        m.add(make_button("Contact on WhatsApp", url=f"https://wa.me/{wa}", style="success"))
     m.row(
-        make_button("Open New Ticket", callback_data="ticket_open", style="success", emoji_key="ticket_open"),
-        make_button("My Open Tickets", callback_data="ticket_view", style="success", emoji_key="ticket_view"),
+        make_button("Open New Ticket", callback_data="ticket_open", style="success"),
+        make_button("My Open Tickets", callback_data="ticket_view", style="success"),
     )
-    m.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+    m.add(make_button("BACK", callback_data="btn_back", style="danger"))
     return m
 
 def support_text():
@@ -1136,7 +994,7 @@ def admin_texts_markup():
     names = {"shop":"🛒 Shop","profile":"👤 My Profile","balance":"💰 Add Balance","orders":"🛍 My Orders","referral":"👥 Referral","support":"🎧 Support","ludo":"🎲 Ludo Spin","download":"📥 Download Files"}
     for key, name in names.items():
         m.add(make_button(name, callback_data=f"admin_text|{key}", style="primary"))
-    m.add(make_button("⬅️ BACK", callback_data="admin_back", style="danger"))
+    m.add(make_button("⬅️ BACK", callback_data="admin_home", style="danger"))
     return m
 
 def admin_menu():
@@ -1166,14 +1024,14 @@ def admin_menu():
         make_button("Referral", callback_data="admin_referral", style="primary"),
         make_button("Reload", callback_data="admin_reload", style="primary"),
     )
-    m.add(make_button("Close", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+    m.add(make_button("Close", callback_data="btn_back", style="danger"))
     return m
 
 def admin_edit_markup(section, fields):
     m = InlineKeyboardMarkup()
     for key, label in fields:
         m.add(make_button(label, callback_data=f"admin_edit_{section}_{key}", style="primary"))
-    m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+    m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
     return m
 
 def begin_admin_input(user_id, action, prompt, value_type="text", **extra):
@@ -1207,7 +1065,7 @@ def admin_styles_markup():
                 style=BUTTON_STYLES.get(key, "primary"),
             ))
         m.row(*row)
-    m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+    m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
     return m
 
 def admin_emoji_markup():
@@ -1220,10 +1078,9 @@ def admin_emoji_markup():
                 key,
                 callback_data=f"admin_emoji|{key}",
                 style="primary",
-                emoji_key=key,
             ))
         m.row(*row)
-    m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+    m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
     return m
 
 def admin_product_markup(app_code):
@@ -1238,7 +1095,7 @@ def admin_product_markup(app_code):
                 style="success",
             ))
     m.add(make_button("🗑️ Delete Product", callback_data=f"admin_proddelete|{app_code}", style="danger"))
-    m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger", emoji_key="btn_back"))
+    m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger"))
     return m
 
 def admin_product_text(app_code):
@@ -1277,6 +1134,7 @@ def admin_callback(call):
     data = call.data
     chat_id = call.message.chat.id
     message_id = call.message.message_id
+    uid = call.from_user.id
 
     if data == "admin_home":
         bot.edit_message_text(
@@ -1296,8 +1154,6 @@ def admin_callback(call):
         bot.answer_callback_query(call.id, "Settings reloaded.", show_alert=True)
         return
 
-    # FIX: this handler was missing in the original file. The admin edit
-    # buttons created admin_edit_* callbacks, but nothing processed them.
     if data.startswith("admin_edit_"):
         payload = data[len("admin_edit_"):]
         if "_" not in payload:
@@ -1334,7 +1190,6 @@ def admin_callback(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Main Menu Texts must be handled here (inside the admin_* callback handler).
     if data == "admin_texts":
         bot.edit_message_text(
             "<b>📝 MAIN MENU TEXTS</b>\n\nSelect the text you want to customize.",
@@ -1539,7 +1394,7 @@ def admin_callback(call):
         ]:
             m.add(make_button(label, callback_data=f"admin_prodpanel_{panel}"))
         m.add(make_button("➕ Add Product", callback_data="admin_add_product"))
-        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
         bot.edit_message_text("<b>📦 PRODUCT MANAGER</b>\n\nChoose a category or add a new product.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -1553,7 +1408,7 @@ def admin_callback(call):
             ("pnl_pc", "PC"),
         ]:
             m.add(make_button(label, callback_data=f"admin_newproduct_panel|{panel}"))
-        m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger"))
         bot.edit_message_text("<b>➕ ADD PRODUCT</b>\n\nFirst choose the category.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -1576,8 +1431,8 @@ def admin_callback(call):
         for label, cb in get_panel_items(panel):
             app_code = cb.replace("app_", "", 1)
             if app_code in CATALOG:
-                m.add(make_button(label, callback_data=f"admin_product|{app_code}", emoji_key=cb))
-        m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger", emoji_key="btn_back"))
+                m.add(make_button(label, callback_data=f"admin_product|{app_code}"))
+        m.add(make_button("⬅️ Products", callback_data="admin_products", style="danger"))
         bot.edit_message_text(f"<b>📦 {esc(panel)}</b>\n\nSelect a product.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -1641,7 +1496,7 @@ def admin_callback(call):
                 callback_data=f"admin_user|{r['user_id']}",
                 style="primary",
             ))
-        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
         bot.edit_message_text(f"<b>👤 USERS</b>\n\nShowing {len(rows)} users.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -1658,7 +1513,7 @@ def admin_callback(call):
             m.add(make_button("Unblock", callback_data=f"admin_unblock|{uid}", style="success"))
         else:
             m.add(make_button("Block", callback_data=f"admin_block|{uid}", style="danger"))
-        m.add(make_button("⬅️ Users", callback_data="admin_users", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Users", callback_data="admin_users", style="danger"))
         text = (
             f"<b>👤 USER {uid}</b>\n\n"
             f"Name: {esc(row['name'])}\n"
@@ -1704,7 +1559,7 @@ def admin_callback(call):
                 callback_data=f"admin_order|{r['id']}",
                 style="primary",
             ))
-        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
         bot.edit_message_text("<b>🧾 RECENT ORDERS</b>\n\nSelect an order.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -1720,7 +1575,7 @@ def admin_callback(call):
         m = InlineKeyboardMarkup()
         for status in ("PENDING", "PAID", "CANCELLED"):
             m.add(make_button(status, callback_data=f"admin_orderstatus|{oid}|{status}", style="success" if status == "PAID" else "danger" if status == "CANCELLED" else "primary"))
-        m.add(make_button("⬅️ Orders", callback_data="admin_orders", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Orders", callback_data="admin_orders", style="danger"))
         text = (
             f"<b>🧾 ORDER #{oid}</b>\n\n"
             f"User: <code>{r['user_id']}</code>\n"
@@ -1754,7 +1609,7 @@ def admin_callback(call):
                 callback_data=f"admin_ticket|{r['id']}",
                 style="primary",
             ))
-        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Admin Menu", callback_data="admin_home", style="danger"))
         bot.edit_message_text("<b>🎫 SUPPORT TICKETS</b>\n\nSelect a ticket.", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -1770,7 +1625,7 @@ def admin_callback(call):
         m = InlineKeyboardMarkup()
         for status in ("OPEN", "CLOSED"):
             m.add(make_button(status, callback_data=f"admin_ticketstatus|{tid}|{status}", style="success" if status == "OPEN" else "danger"))
-        m.add(make_button("⬅️ Tickets", callback_data="admin_tickets", style="danger", emoji_key="btn_back"))
+        m.add(make_button("⬅️ Tickets", callback_data="admin_tickets", style="danger"))
         text = (
             f"<b>🎫 TICKET #{tid}</b>\n\n"
             f"User: <code>{r['user_id']}</code>\n"
@@ -1893,7 +1748,6 @@ def handle_admin_input(message):
             if price < 0:
                 raise ValueError("Price cannot be negative.")
             if app_code in CATALOG:
-                # JSON may return duration keys as strings.
                 if duration in CATALOG[app_code]:
                     CATALOG[app_code][duration] = price
                 else:
@@ -1939,6 +1793,26 @@ def handle_admin_input(message):
 
     except Exception as e:
         bot.send_message(uid, f"<b>❌ Update failed:</b> <code>{esc(e)}</code>", reply_markup=admin_menu())
+
+# ============================================================
+# TICKET USER INPUT
+# ============================================================
+
+@bot.message_handler(func=lambda message: message.from_user.id in ticket_waiting)
+def handle_ticket_input(message):
+    uid = message.from_user.id
+    ticket_waiting.discard(uid)
+    issue = (message.text or "").strip()
+    if not issue:
+        bot.send_message(uid, "<b>Ticket cancelled or empty text.</b>")
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = db()
+    cur = conn.execute("INSERT INTO tickets(user_id,issue,status,created_at) VALUES(?,?,?,?)", (uid, issue, "OPEN", now))
+    tid = cur.lastrowid
+    conn.commit()
+    conn.close()
+    bot.send_message(uid, f"<b>✅ Ticket #{tid} Created!</b>\nWe will get back to you soon.", reply_markup=back_markup())
 
 # ============================================================
 # NORMAL CALLBACKS
@@ -2034,8 +1908,8 @@ def normal_callback(call):
 
     if data == "btn_profile":
         m = InlineKeyboardMarkup()
-        m.add(make_button("Redeem Promo Code", callback_data="promo_redeem", style="success", emoji_key="btn_redeem"))
-        m.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
+        m.add(make_button("Redeem Promo Code", callback_data="promo_redeem", style="success"))
+        m.add(make_button("BACK", callback_data="btn_back", style="danger"))
         bot.edit_message_text(profile_text(uid), chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
@@ -2146,7 +2020,7 @@ def normal_callback(call):
         m = InlineKeyboardMarkup()
         if admin:
             m.add(make_button("Send Proof to Admin", url=f"https://t.me/{admin}", style="success"))
-        m.add(make_button("Back", callback_data="btn_balance", style="danger", emoji_key="btn_back"))
+        m.add(make_button("Back", callback_data="btn_balance", style="danger"))
         bot.edit_message_text(
             (
                 "<b>🟡 BINANCE PAY SYSTEM</b>\n\n"
@@ -2165,7 +2039,7 @@ def normal_callback(call):
         m = InlineKeyboardMarkup()
         if admin:
             m.add(make_button("Send Proof to Admin", url=f"https://t.me/{admin}", style="success"))
-        m.add(make_button("Back", callback_data="btn_balance", style="danger", emoji_key="btn_back"))
+        m.add(make_button("Back", callback_data="btn_balance", style="danger"))
         bot.edit_message_text(
             (
                 "<b>💸 BKASH PAYMENT</b>\n\n"
@@ -2212,160 +2086,20 @@ def normal_callback(call):
 
     if data == "btn_download":
         m = InlineKeyboardMarkup()
-        m.add(make_button("Access Download Channel", url=DOWNLOAD_CHANNEL_URL, style="success", emoji_key="btn_download_channel"))
-        m.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
-        bot.edit_message_text(
-            (
-                "<b>📦 DOWNLOAD PREMIUM APK & FILES 📊</b>\n\n"
-                "🌐 All available files are hosted in our private channel.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "📱 <b>WHAT YOU GET:</b>\n\n"
-                "✔ Latest Updates\n"
-                "✔ Configs & Guides\n"
-                "✔ Installation Information\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "Tap the button below to access the download channel."
-            ),
-            chat_id, message_id, reply_markup=m,
-        )
+        m.add(make_button("Access Download Channel", url=DOWNLOAD_CHANNEL_URL, style="success"))
+        m.add(make_button("BACK", callback_data="btn_back", style="danger"))
+        bot.edit_message_text("<b>📥 DOWNLOAD FILES</b>\n\nClick below to open the download channel:", chat_id, message_id, reply_markup=m)
         bot.answer_callback_query(call.id)
         return
 
     if data == "btn_ludo":
-        if not bool(get_setting("ludo", "enabled", True)):
-            bot.answer_callback_query(call.id, "Lucky feature is disabled.", show_alert=True)
-            return
-        text = (
-            f"<b>{E_LUDO()} LUDO SPIN & WIN</b>\n\n"
-            "चक्र घुमाएं और पुरस्कार जीतें!\n"
-            "Niyam: आप इसे 24 घंटे में सिर्फ 1 बार घुमा सकते हैं।"
-        )
-        spin_markup = InlineKeyboardMarkup()
-        spin_markup.add(make_button("Spin Dice Now", callback_data="btn_dospin", style="success", emoji_key="btn_dospin"))
-        spin_markup.add(make_button("BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
-        bot.edit_message_text(text, chat_id, message_id, reply_markup=spin_markup)
-        bot.answer_callback_query(call.id)
+        bot.answer_callback_query(call.id, "Ludo Spin is available soon!", show_alert=True)
         return
 
-    if data == "btn_dospin":
-        if not bool(get_setting("ludo", "enabled", True)):
-            bot.answer_callback_query(call.id, "Lucky feature is disabled.", show_alert=True)
-            return
-        current_time = time.time()
-        cooldown_period = float(get_setting("ludo", "cooldown_hours", 24)) * 3600
-        last_spin = float(spin_last.get(str(uid), spin_last.get(uid, 0)) or 0)
-        if current_time - last_spin < cooldown_period:
-            remaining = int(cooldown_period - (current_time - last_spin))
-            hours, rem = divmod(remaining, 3600)
-            minutes = rem // 60
-            bot.answer_callback_query(call.id, f"Try again in about {hours}h {minutes}m.", show_alert=True)
-            return
-
-        spin_last[str(uid)] = current_time
-        save_spin_data(spin_last)
-        try:
-            bot.delete_message(chat_id=chat_id, message_id=message_id)
-        except Exception:
-            pass
-
-        dice_msg = bot.send_dice(chat_id=chat_id)
-        dice_value = dice_msg.dice.value
-        rewards = {1: 0.10, 2: 0.20, 3: 0.30, 4: 0.40, 5: 0.50, 6: 1.00}
-        won_amount = rewards.get(dice_value, 0.10)
-        new_balance = add_user_balance(uid, won_amount)
-        time.sleep(3)
-        spin_text = (
-            f"<b>{E_LUDO()} LUCKY DICE RESULT</b>\n\n"
-            f"Dice Value: {dice_value}\n\n"
-            f"You Won: {money(won_amount)} (~ ${usd(won_amount):.2f})\n"
-            f"Total Balance: {money(new_balance)} (~ ${usd(new_balance):.2f})\n\n"
-            f"Congratulations! Come back after {float(get_setting('ludo','cooldown_hours',24)):g} hours."
-        )
-        result_markup = InlineKeyboardMarkup()
-        result_markup.add(make_button("BACK TO MENU", callback_data="btn_back", style="danger", emoji_key="btn_back"))
-        bot.send_message(chat_id, spin_text, reply_to_message_id=dice_msg.message_id, reply_markup=result_markup)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data == "promo_redeem":
-        bot.send_message(chat_id, "<b>🎟️ Promo Code</b>\n\nPromo-code redemption can be connected to your campaign codes.", reply_markup=back_markup())
-        bot.answer_callback_query(call.id)
-        return
-
-    bot.answer_callback_query(call.id)
-
 # ============================================================
-# SUPPORT TICKET TEXT HANDLER
+# BOT POLLING
 # ============================================================
-
-@bot.message_handler(func=lambda message: message.from_user.id in ticket_waiting)
-def handle_ticket_message(message):
-    uid = message.from_user.id
-    issue = (message.text or "").strip()
-    ticket_waiting.discard(uid)
-
-    if not issue:
-        bot.send_message(message.chat.id, "<b>Please text your problem.</b>")
-        return
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = db()
-    cur = conn.execute(
-        "INSERT INTO tickets(user_id,issue,status,created_at) VALUES(?,?,?,?)",
-        (uid, issue, "OPEN", now),
-    )
-    tid = cur.lastrowid
-    conn.commit()
-    conn.close()
-
-    bot.send_message(
-        message.chat.id,
-        (
-            "<b>🎫 Support Ticket Created!</b>\n\n"
-            f"Ticket ID: <code>#{tid}</code>\n"
-            "Status: <b>OPEN</b>\n\n"
-            "Admin aapki problem check karega."
-        ),
-        reply_markup=back_markup(),
-    )
-
-# ============================================================
-# STARTUP
-# ============================================================
-
-# ============================================================
-# RENDER HTTP SERVER
-# Keeps Render Web Service port alive while Telegram polling runs.
-# ============================================================
-
-class RenderHealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"VICKY X MODE SHOP BOT is running")
-
-    def log_message(self, format, *args):
-        pass
-
-
-def start_http_server():
-    port = int(os.environ.get("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), RenderHealthHandler)
-    print(f"HTTP health server running on port {port}")
-    server.serve_forever()
-
-
-print("VICKY X MODE SHOP bot starting...")
-print("Configured admin IDs:", len(ADMIN_IDS))
 
 if __name__ == "__main__":
-    # Start Render HTTP server in background.
-    threading.Thread(target=start_http_server, daemon=True).start()
-
-    # Start Telegram bot polling in the main thread.
-    bot.infinity_polling(
-        timeout=60,
-        long_polling_timeout=60,
-        skip_pending=True,
-    )
+    print("Bot is starting...")
+    bot.infinity_polling(skip_pending=True)
