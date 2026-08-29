@@ -174,25 +174,6 @@ TEXT_EMOJI_IDS = {'welcome_title_left': '5278702045883292456',
 # OUT-OF-STOCK buttons are automatically danger.
 # ============================================================
 
-# ============================================================
-# ADMIN TEXT + CUSTOM EMOJI SETTINGS
-# ============================================================
-TEXT_DEFAULTS = {
-    "shop": "Shop", "profile": "My Profile", "balance": "Add Balance",
-    "orders": "My Orders", "referral": "Referral", "support": "Support",
-    "lucky": "Lucky", "download": "Download Files",
-}
-
-TEXT_EMOJI_SETTINGS = {k: {"left": "", "right": ""} for k in TEXT_DEFAULTS}
-
-def custom_menu_text(key):
-    text = get_setting("labels", key, TEXT_DEFAULTS.get(key, key))
-    emojis = get_setting("text_emojis", key, TEXT_EMOJI_SETTINGS.get(key, {"left":"", "right":""}))
-    if not isinstance(emojis, dict): emojis = {"left":"", "right":""}
-    left = custom_emoji(emojis.get("left", ""), "") if emojis.get("left") else ""
-    right = custom_emoji(emojis.get("right", ""), "") if emojis.get("right") else ""
-    return f"{left}{text}{right}"
-
 BUTTON_STYLES = {'btn_store': 'primary',
  'btn_profile': 'success',
  'btn_balance': 'success',
@@ -680,20 +661,21 @@ def duration_text(duration):
 
 def main_menu_markup():
     m = InlineKeyboardMarkup()
-    m.add(make_button(custom_menu_text("shop"), callback_data="btn_store", emoji_key=None))
+    label = lambda key, fallback: get_setting("labels", key, fallback)
+    m.add(make_button(label("shop", "Shop"), callback_data="btn_store", emoji_key="btn_store"))
     m.row(
-        make_button(custom_menu_text("profile"), callback_data="btn_profile", emoji_key=None),
-        make_button(custom_menu_text("balance"), callback_data="btn_balance", emoji_key=None),
+        make_button(label("profile", "My Profile"), callback_data="btn_profile", emoji_key="btn_profile"),
+        make_button(label("balance", "Add Balance"), callback_data="btn_balance", emoji_key="btn_balance"),
     )
     m.row(
-        make_button(custom_menu_text("orders"), callback_data="btn_history", emoji_key=None),
-        make_button(custom_menu_text("referral"), callback_data="btn_referral", emoji_key=None),
+        make_button(label("orders", "My Orders"), callback_data="btn_history", emoji_key="btn_history"),
+        make_button(label("referral", "Referral"), callback_data="btn_referral", emoji_key="btn_referral"),
     )
     m.row(
-        make_button(custom_menu_text("support"), callback_data="btn_support", emoji_key=None),
-        make_button(custom_menu_text("lucky"), callback_data="btn_ludo", emoji_key=None),
+        make_button(label("support", "Support"), callback_data="btn_support", emoji_key="btn_support"),
+        make_button(label("lucky", "Lucky"), callback_data="btn_ludo", emoji_key="btn_ludo"),
     )
-    m.add(make_button(custom_menu_text("download"), callback_data="btn_download", emoji_key=None))
+    m.add(make_button(label("download", "Download Files"), callback_data="btn_download", emoji_key="btn_download"))
     return m
 
 def show_main_menu(chat_id, name="User"):
@@ -1061,17 +1043,8 @@ def support_text():
 # ADMIN UI
 # ============================================================
 
-def admin_texts_markup():
-    m = InlineKeyboardMarkup()
-    names = {"shop":"🛒 Shop","profile":"👤 My Profile","balance":"💰 Add Balance","orders":"🛍 My Orders","referral":"👥 Referral","support":"🎧 Support","lucky":"🎲 Ludo","download":"📥 Download Files"}
-    for key, name in names.items():
-        m.add(make_button(name, callback_data=f"admin_text|{key}", style="primary"))
-    m.add(make_button("⬅️ BACK", callback_data="admin_back", style="danger"))
-    return m
-
 def admin_menu():
     m = InlineKeyboardMarkup()
-    m.add(make_button("📝 Main Menu Texts", callback_data="admin_texts", style="primary"))
     m.row(
         make_button("Bot Settings", callback_data="admin_bot", style="primary"),
         make_button("Button Labels", callback_data="admin_buttons", style="primary"),
@@ -1731,20 +1704,6 @@ def handle_admin_input(message):
             )
             return
 
-        if action == "menu_text":
-            save_setting("labels", state["text_key"], value)
-            bot.send_message(uid, "<b>✅ Text updated.</b>", reply_markup=admin_menu())
-            return
-
-        if action == "menu_emoji":
-            key=state["text_key"]; side=state["emoji_side"]
-            emojis=get_setting("text_emojis", key, {"left":"", "right":""})
-            if not isinstance(emojis, dict): emojis={"left":"", "right":""}
-            emojis[side]=value.strip()
-            save_setting("text_emojis", key, emojis)
-            bot.send_message(uid, "<b>✅ Custom emoji updated.</b>", reply_markup=admin_menu())
-            return
-
         if action == "product_name":
             app_code = state["app_code"]
             if app_code in CATALOG:
@@ -2096,45 +2055,6 @@ def normal_callback(call):
             chat_id, message_id, reply_markup=m,
         )
         bot.answer_callback_query(call.id)
-        return
-
-    if data == "admin_texts":
-        bot.edit_message_text("<b>📝 MAIN MENU TEXTS</b>\n\nSelect the text you want to customize.", chat_id, message_id, reply_markup=admin_texts_markup())
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_text|"):
-        key = data.split("|", 1)[1]
-        current = get_setting("labels", key, TEXT_DEFAULTS.get(key, key))
-        emojis = get_setting("text_emojis", key, {"left":"", "right":""})
-        if not isinstance(emojis, dict): emojis = {"left":"", "right":""}
-        m = InlineKeyboardMarkup()
-        m.add(make_button("✏️ Edit Text", callback_data=f"admin_edittext|{key}", style="primary"))
-        m.add(make_button("⬅️ Left Custom Emoji", callback_data=f"admin_textemoji|{key}|left", style="success"))
-        m.add(make_button("➡️ Right Custom Emoji", callback_data=f"admin_textemoji|{key}|right", style="success"))
-        m.add(make_button("🗑 Clear Emojis", callback_data=f"admin_clearemoji|{key}", style="danger"))
-        m.add(make_button("⬅️ BACK", callback_data="admin_texts", style="danger"))
-        preview=f"<b>TEXT CUSTOMIZATION</b>\n\nPreview: {custom_menu_text(key)}\n\nText: <code>{esc(str(current))}</code>\nLeft: <code>{esc(str(emojis.get('left','') or 'None'))}</code>\nRight: <code>{esc(str(emojis.get('right','') or 'None'))}</code>"
-        bot.edit_message_text(preview, chat_id, message_id, reply_markup=m)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_edittext|"):
-        key=data.split("|",1)[1]
-        begin_admin_input(uid, "menu_text", "Send the new text:", "text", text_key=key)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_textemoji|"):
-        _, key, side = data.split("|",2)
-        begin_admin_input(uid, "menu_emoji", "Send the custom emoji ID:", "text", text_key=key, emoji_side=side)
-        bot.answer_callback_query(call.id)
-        return
-
-    if data.startswith("admin_clearemoji|"):
-        key=data.split("|",1)[1]
-        save_setting("text_emojis", key, {"left":"", "right":""})
-        bot.answer_callback_query(call.id, "Emojis cleared")
         return
 
     if data == "btn_ludo":
