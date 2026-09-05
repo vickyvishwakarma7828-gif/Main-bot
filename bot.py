@@ -331,6 +331,7 @@ DEFAULT_SETTINGS = {
         "upi_id": "vicky3198737@axl",
         "binance_pay_id": "123456789",
         "bkash_number": "01700000000",
+        "api_key": "",
         "min_amount": 50,
         "max_amount": 2000,
     },
@@ -446,6 +447,20 @@ def init_db():
     CREATE TABLE IF NOT EXISTS referrals (
         user_id INTEGER PRIMARY KEY, referrer_id INTEGER
     );
+    CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        kind TEXT,
+        amount REAL,
+        note TEXT,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS resellers (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT,
+        discount REAL DEFAULT 0,
+        created_at TEXT
+    );
     """)
     conn.commit()
     conn.close()
@@ -475,6 +490,9 @@ amount_input = {}
 admin_input = {}
 ticket_waiting = set()
 spin_last = {}
+admin_session = set()
+reseller_input = {}
+broadcast_lock = threading.Lock()
 
 # ============================================================
 # HELPERS
@@ -1191,137 +1209,140 @@ def send_upi_payment(chat_id, amount):
 # ADMIN UI & HANDLERS
 # ============================================================
 
+def admin_card(title, body, icon="🛠️"):
+    return (
+        f"<blockquote><b>{icon} {esc(title)} 💬</b></blockquote>\n\n"
+        f"{body}"
+    )
+
 def admin_menu():
     m = InlineKeyboardMarkup()
-
-    m.add(
-        make_button(
-            "📝 Main Menu Texts",
-            callback_data="admin_texts",
-            style="primary"
-        )
-    )
-
     m.row(
-        make_button("Bot Settings", callback_data="admin_bot"),
-        make_button("Button Labels", callback_data="admin_buttons")
+        make_button("📣 BROADCAST", callback_data="admin_broadcast", style="primary"),
+        make_button("👥 RESELLERS", callback_data="admin_resellers", style="primary"),
     )
-
     m.row(
-        make_button("Button Styles", callback_data="admin_styles"),
-        make_button("Custom Emojis", callback_data="admin_emojis")
+        make_button("🎫 PENDING TICKETS", callback_data="admin_tickets", style="primary"),
+        make_button("👤 SEARCH USER", callback_data="admin_users", style="primary"),
     )
-
     m.row(
-        make_button("Messages", callback_data="admin_messages"),
-        make_button("Payments", callback_data="admin_payment")
+        make_button("👑 PAYMENT SETTINGS", callback_data="admin_payment", style="primary"),
+        make_button("📝 MAIN MENU TEXTS", callback_data="admin_texts", style="primary"),
     )
-
     m.row(
-        make_button(
-            "Products",
-            callback_data="admin_products",
-            style="success"
-        ),
-        make_button(
-            "Users",
-            callback_data="admin_users",
-            style="success"
-        )
+        make_button("🎨 CUSTOM EMOJIS", callback_data="admin_emojis", style="primary"),
+        make_button("🔄 RELOAD", callback_data="admin_reload", style="primary"),
     )
-
-    m.row(
-        make_button(
-            "Orders",
-            callback_data="admin_orders",
-            style="success"
-        ),
-        make_button(
-            "Tickets",
-            callback_data="admin_tickets",
-            style="success"
-        )
-    )
-
-    m.row(
-        make_button("Referral", callback_data="admin_referral"),
-        make_button("Reload", callback_data="admin_reload")
-    )
-
-    m.add(
-        make_button(
-            "Close",
-            callback_data="btn_back",
-            style="danger",
-            emoji_key="btn_back"
-        )
-    )
-
+    m.add(make_button("❌ BACK", callback_data="btn_back", style="danger", emoji_key="btn_back"))
     return m
-
-# ============================================================
-# FIX: ADMIN MAIN MENU TEXT EDITOR
-# ============================================================
 
 def admin_texts_menu():
     m = InlineKeyboardMarkup()
-
     for key, default in TEXT_DEFAULTS.items():
-        current = get_setting(
-            "labels",
-            key,
-            default
-        )
-
-        # Keep the button readable even if a very long custom text
-        # was saved previously.
+        current = get_setting("labels", key, default)
         display_current = str(current)
         if len(display_current) > 35:
             display_current = display_current[:32] + "..."
+        m.add(make_button(
+            f"{key.title()}: {display_current}",
+            callback_data=f"admin_edit_text_{key}",
+            style="primary"
+        ))
+    m.add(make_button("❌ BACK TO ADMIN", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+    return m
 
-        m.add(
-            make_button(
-                f"{key.title()}: {display_current}",
-                callback_data=f"admin_edit_text_{key}",
-                style="primary"
-            )
+def payment_settings_markup():
+    m = InlineKeyboardMarkup()
+    m.add(make_button("EDIT UPI ID", callback_data="admin_edit_upi", style="primary"))
+    m.add(make_button("🚀 EDIT API KEY", callback_data="admin_edit_api", style="primary"))
+    m.add(make_button("🟡 EDIT BINANCE ID", callback_data="admin_edit_binance", style="primary"))
+    m.add(make_button("❌ BACK", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+    return m
+
+def reseller_markup():
+    m = InlineKeyboardMarkup()
+    m.add(make_button("➕ OPEN RESELLER PANEL", callback_data="admin_reseller_panel", style="primary"))
+    conn = db()
+    rows = conn.execute("SELECT user_id,username FROM resellers ORDER BY id DESC LIMIT 10").fetchall() if False else conn.execute(
+        "SELECT user_id,username FROM resellers ORDER BY created_at DESC LIMIT 10"
+    ).fetchall()
+    conn.close()
+    for r in rows:
+        m.row(
+            make_button("@" + (r["username"] or str(r["user_id"])), callback_data=f"admin_reseller_view_{r['user_id']}", style="primary"),
+            make_button("🗑️", callback_data=f"admin_reseller_delete_{r['user_id']}", style="danger")
         )
+    m.add(make_button("❌ BACK", callback_data="admin_home", style="danger", emoji_key="btn_back"))
+    return m
 
-    m.add(
-        make_button(
-            "BACK TO ADMIN",
-            callback_data="admin_home",
-            style="danger",
-            emoji_key="btn_back"
+def ticket_admin_markup():
+    m = InlineKeyboardMarkup()
+    conn = db()
+    rows = conn.execute(
+        "SELECT id,user_id,issue FROM tickets WHERE status='OPEN' ORDER BY id DESC LIMIT 10"
+    ).fetchall()
+    conn.close()
+    for r in rows:
+        m.add(make_button(
+            f"🎫 #{r['id']} • {r['user_id']}",
+            callback_data=f"admin_ticket_{r['id']}",
+            style="primary"
+        ))
+    m.add(make_button("🔴 BACK", callback_data="admin_home", style="danger"))
+    return m
+
+@bot.message_handler(commands=["loginme"])
+def admin_login_command(message):
+    uid = message.from_user.id
+    if not is_admin(uid):
+        return
+    admin_input[uid] = {"type": "admin_login"}
+    bot.send_message(
+        message.chat.id,
+        admin_card(
+            "ADMIN LOGIN ⛔",
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🔐 <b>Please enter admin password to continue:</b>\n"
+            "⚡",
+            "🖼️"
         )
     )
-
-    return m
 
 @bot.message_handler(commands=["admin"])
 def admin_command(message):
     ensure_user(message.from_user)
-
-    if not is_admin(message.from_user.id):
+    uid = message.from_user.id
+    if not is_admin(uid):
         return
-
-    # Cancel any old pending text edit when opening admin again.
-    admin_input.pop(message.from_user.id, None)
-
+    if uid not in admin_session:
+        admin_input[uid] = {"type": "admin_login"}
+        bot.send_message(
+            message.chat.id,
+            admin_card("ADMIN LOGIN ⛔",
+                       "━━━━━━━━━━━━━━━━━━━━\n\n"
+                       "🔐 <b>Please enter admin password to continue:</b>\n⚡",
+                       "🖼️")
+        )
+        return
+    admin_input.pop(uid, None)
     bot.send_message(
         message.chat.id,
-        "<b>⚙️ ADMIN CONTROL CENTER</b>",
+        admin_card(
+            "ADMIN PANEL",
+            "🔎 <b>Search</b> · 💰 <b>Manage Balance</b> · 🚫 <b>Bans</b>",
+            "🛡️"
+        ),
         reply_markup=admin_menu()
     )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def admin_callback(call):
-    if not is_admin(call.from_user.id):
-        bot.answer_callback_query(
-            call.id,
-            "Unauthorized.",
-            show_alert=True
-        )
+    uid = call.from_user.id
+    if not is_admin(uid):
+        bot.answer_callback_query(call.id, "Unauthorized.", show_alert=True)
+        return
+    if uid not in admin_session and call.data not in ("admin_home",):
+        bot.answer_callback_query(call.id, "Login required. Use /loginme.", show_alert=True)
         return
 
     data = call.data
@@ -1329,97 +1350,182 @@ def admin_callback(call):
     message_id = call.message.message_id
 
     if data == "admin_home":
-        admin_input.pop(call.from_user.id, None)
-
+        admin_input.pop(uid, None)
         bot.edit_message_text(
-            "<b>⚙️ ADMIN CONTROL CENTER</b>",
-            chat_id,
-            message_id,
-            reply_markup=admin_menu()
+            admin_card("ADMIN PANEL",
+                       "🔎 Search · 💰 Manage Balance · 🚫 Bans",
+                       "🛡️"),
+            chat_id, message_id, reply_markup=admin_menu()
         )
         bot.answer_callback_query(call.id)
         return
-
-    # ========================================================
-    # MAIN MENU TEXTS — OPEN EDITOR
-    # ========================================================
 
     if data == "admin_texts":
-        admin_input.pop(call.from_user.id, None)
-
         bot.edit_message_text(
-            "<b>📝 MAIN MENU TEXT SETTINGS</b>\n\n"
-            "जिस text को बदलना है उस button पर क्लिक करें:",
-            chat_id,
-            message_id,
-            reply_markup=admin_texts_menu()
+            admin_card("MAIN MENU TEXT SETTINGS",
+                       "जिस text को बदलना है उस button पर क्लिक करें:"),
+            chat_id, message_id, reply_markup=admin_texts_menu()
         )
-
-        bot.answer_callback_query(call.id)
-        return
-
-    # ========================================================
-    # MAIN MENU TEXTS — SELECT ONE TEXT
-    # ========================================================
+        bot.answer_callback_query(call.id); return
 
     if data.startswith("admin_edit_text_"):
         key = data.replace("admin_edit_text_", "", 1)
-
         if key not in TEXT_DEFAULTS:
-            bot.answer_callback_query(
-                call.id,
-                "Invalid text.",
-                show_alert=True
-            )
-            return
-
-        admin_input[call.from_user.id] = {
-            "type": "menu_text",
-            "key": key,
-            "chat_id": chat_id,
-            "message_id": message_id
-        }
-
-        current = get_setting(
-            "labels",
-            key,
-            TEXT_DEFAULTS[key]
-        )
-
-        bot.answer_callback_query(call.id)
-
+            bot.answer_callback_query(call.id, "Invalid text.", show_alert=True); return
+        admin_input[uid] = {"type":"menu_text","key":key,"chat_id":chat_id,"message_id":message_id}
+        current = get_setting("labels", key, TEXT_DEFAULTS[key])
         bot.send_message(
             chat_id,
-            "<b>✏️ EDIT MAIN MENU TEXT</b>\n\n"
-            f"<b>Button:</b> {esc(key.title())}\n"
-            f"<b>Current:</b> {esc(current)}\n\n"
-            "अब नया text भेजें.\n\n"
-            f"<i>Example: {esc(TEXT_DEFAULTS[key])}</i>\n\n"
-            "❌ Cancel करने के लिए /cancel भेजें."
+            admin_card("EDIT MAIN MENU TEXT",
+                       f"<b>Button:</b> {esc(key.title())}\n"
+                       f"<b>Current:</b> {esc(current)}\n\n"
+                       "✏️ नया text भेजें.\n❌ Cancel: /cancel"),
         )
+        bot.answer_callback_query(call.id); return
+
+    if data == "admin_payment":
+        upi = get_setting("payment","upi_id","Not Set")
+        api_key = get_setting("payment","api_key","Not Set")
+        binance = get_setting("payment","binance_pay_id","Not Set")
+        text = admin_card(
+            "PAYMENT SETTINGS",
+            "💬 <b>Manage your payment methods and merchant details from here.</b>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👑 <b>FamPay UPI ID :</b>\n{esc(upi)}\n\n"
+            f"🚀 <b>FamPay API Key :</b>\n<code>{esc(api_key)}</code>\n\n"
+            f"➕ <b>Binance Pay ID :</b>\n{esc(binance)}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🛡️ <b>Select what you want to edit.</b>",
+            "👑"
+        )
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=payment_settings_markup())
+        bot.answer_callback_query(call.id); return
+
+    if data in ("admin_edit_upi","admin_edit_api","admin_edit_binance"):
+        field = {"admin_edit_upi":"upi_id","admin_edit_api":"api_key","admin_edit_binance":"binance_pay_id"}[data]
+        admin_input[uid] = {"type":"payment","field":field}
+        bot.send_message(chat_id, f"✏️ <b>Edit {esc(field)}</b>\n\nNew value भेजें. /cancel")
+        bot.answer_callback_query(call.id); return
+
+    if data == "admin_broadcast":
+        bot.edit_message_text(
+            admin_card("BROADCAST WEB/BOT 🛠️",
+                       "🔊 <b>Open the broadcast panel to manage:</b>\n\n"
+                       "🔵 Broadcast Text 🏅\n"
+                       "🔵 Broadcast Image 🏅\n"
+                       "🔵 Broadcast with Premium Emoji 🏅"),
+            chat_id, message_id,
+            reply_markup=InlineKeyboardMarkup()
+        )
+        m=InlineKeyboardMarkup()
+        m.add(make_button("➕ OPEN BROADCAST PANEL", callback_data="admin_broadcast_panel", style="primary"))
+        m.add(make_button("➕ Bot Broadcast", callback_data="admin_bot_broadcast", style="primary"))
+        m.add(make_button("❌ BACK", callback_data="admin_home", style="danger"))
+        bot.edit_message_reply_markup(chat_id, message_id, reply_markup=m)
+        bot.answer_callback_query(call.id); return
+
+    if data in ("admin_broadcast_panel","admin_bot_broadcast"):
+        admin_input[uid] = {"type":"broadcast"}
+        bot.send_message(
+            chat_id,
+            admin_card("BROADCAST MODE ✅",
+                       "💬 <b>Send the message you want to broadcast.</b>\n\n"
+                       "🖼️ Text, photo, video, stickers and formatted messages are supported. ✅",
+                       "📣")
+        )
+        bot.answer_callback_query(call.id); return
+
+    if data == "admin_resellers":
+        body = ("<b>Open the reseller panel to manage:</b>\n\n"
+                "• Add Resellers\n• Change Discounts\n• Delete Resellers\n• View All Resellers")
+        bot.edit_message_text(
+            admin_card("RESELLER MANAGER", body, "🔵"),
+            chat_id, message_id, reply_markup=reseller_markup()
+        )
+        bot.answer_callback_query(call.id); return
+
+    if data == "admin_reseller_panel":
+        admin_input[uid] = {"type":"add_reseller"}
+        bot.send_message(chat_id, "➕ <b>Send reseller Telegram ID or @username.</b>\nExample: 123456789 or @username\n/cancel")
+        bot.answer_callback_query(call.id); return
+
+    if data.startswith("admin_reseller_delete_"):
+        rid = int(data.rsplit("_",1)[1])
+        conn=db(); conn.execute("DELETE FROM resellers WHERE user_id=?", (rid,)); conn.commit(); conn.close()
+        bot.answer_callback_query(call.id, "Reseller deleted.", show_alert=True)
+        bot.edit_message_reply_markup(chat_id, message_id, reply_markup=reseller_markup()); return
+
+    if data.startswith("admin_reseller_view_"):
+        rid = int(data.rsplit("_",1)[1])
+        conn=db(); r=conn.execute("SELECT * FROM resellers WHERE user_id=?", (rid,)).fetchone(); conn.close()
+        if not r:
+            bot.answer_callback_query(call.id,"Reseller not found.",show_alert=True); return
+        bot.send_message(chat_id, f"<b>RESELLER</b>\n\n🆔 {rid}\n👤 @{esc(r['username'] or 'unknown')}\n💸 Discount: <b>{float(r['discount']):g}%</b>")
+        bot.answer_callback_query(call.id); return
+
+    if data == "admin_tickets":
+        conn=db(); count=conn.execute("SELECT COUNT(*) FROM tickets WHERE status='OPEN'").fetchone()[0]; conn.close()
+        text = admin_card("PENDING TICKETS ❌", f"🟢 <b>{'No open tickets found.' if count == 0 else str(count)+' open ticket(s) found.'}</b>", "🎫")
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=ticket_admin_markup())
+        bot.answer_callback_query(call.id); return
+
+    if data.startswith("admin_ticket_"):
+        tid=int(data.rsplit("_",1)[1])
+        conn=db(); r=conn.execute("SELECT * FROM tickets WHERE id=?", (tid,)).fetchone(); conn.close()
+        if not r:
+            bot.answer_callback_query(call.id,"Ticket not found.",show_alert=True); return
+        m=InlineKeyboardMarkup()
+        m.add(make_button("✅ CLOSE TICKET", callback_data=f"admin_close_ticket_{tid}", style="success"))
+        m.add(make_button("🔴 BACK", callback_data="admin_tickets", style="danger"))
+        bot.edit_message_text(
+            admin_card(f"TICKET #{tid}", f"👤 User: <code>{r['user_id']}</code>\n\n📝 {esc(r['issue'])}\n\n📅 {esc(r['created_at'])}", "🎫"),
+            chat_id,message_id,reply_markup=m)
+        bot.answer_callback_query(call.id); return
+
+    if data.startswith("admin_close_ticket_"):
+        tid=int(data.rsplit("_",1)[1])
+        conn=db(); conn.execute("UPDATE tickets SET status='CLOSED' WHERE id=?", (tid,)); conn.commit(); conn.close()
+        bot.answer_callback_query(call.id,"Ticket closed.",show_alert=True)
+        bot.edit_message_text(admin_card("PENDING TICKETS ❌","🟢 No open tickets found.","🎫"),
+                              chat_id,message_id,reply_markup=ticket_admin_markup()); return
+
+    if data == "admin_users":
+        admin_input[uid] = {"type":"user_search"}
+        bot.send_message(chat_id, "🔎 <b>Search User</b>\n\nSend User ID or @username.\n/cancel")
+        bot.answer_callback_query(call.id); return
+
+    if data.startswith("admin_ban_"):
+        target=int(data.rsplit("_",1)[1])
+        conn=db(); conn.execute("UPDATE users SET blocked=1 WHERE user_id=?",(target,)); conn.commit(); conn.close()
+        bot.answer_callback_query(call.id,"User banned.",show_alert=True)
         return
+
+    if data.startswith("admin_addbal_") or data.startswith("admin_rembal_"):
+        target=int(data.rsplit("_",1)[1])
+        action="add" if data.startswith("admin_addbal_") else "remove"
+        admin_input[uid]={"type":"balance","target":target,"action":action}
+        bot.send_message(chat_id,f"💰 <b>{'Add' if action=='add' else 'Remove'} balance</b>\nEnter amount:")
+        bot.answer_callback_query(call.id); return
 
     if data == "admin_reload":
         global SETTINGS, CATALOG
-
         SETTINGS = load_settings()
         CATALOG = load_catalog()
         apply_custom_ui_settings()
-
-        admin_input.pop(call.from_user.id, None)
-
-        bot.answer_callback_query(
-            call.id,
-            "Reloaded successfully!",
-            show_alert=True
-        )
+        bot.answer_callback_query(call.id, "Reloaded successfully!", show_alert=True)
         return
 
-    # Other admin buttons are kept available.
-    bot.answer_callback_query(
-        call.id,
-        "This admin section is not configured in this version."
-    )
+    if data == "admin_emojis":
+        bot.send_message(
+            chat_id,
+            admin_card("CUSTOM EMOJIS",
+                       "Premium custom emojis are loaded from BUTTON_EMOJI_IDS / TEXT_EMOJI_IDS.\n\n"
+                       "You can update IDs in <code>bot_settings.json</code> and use Reload."),
+            reply_markup=back_markup("admin_home","❌ BACK")
+        )
+        bot.answer_callback_query(call.id); return
+
+    bot.answer_callback_query(call.id)
 
 # ============================================================
 # ADMIN TEXT MESSAGE INPUT
@@ -1453,57 +1559,161 @@ def cancel_admin_input(message):
 )
 def handle_admin_input(message):
     uid = message.from_user.id
-    data = admin_input.get(uid)
+    data = admin_input.get(uid) or {}
+    typ = data.get("type")
 
-    if not data:
+    if typ == "admin_login":
+        password = (message.text or "").strip()
+        expected = os.getenv("ADMIN_PASSWORD", "").strip()
+        if expected and password == expected:
+            admin_session.add(uid)
+            admin_input.pop(uid, None)
+            bot.send_message(
+                message.chat.id,
+                admin_card("ADMIN LOGIN", "✅ <b>Login successful.</b>", "🛡️"),
+                reply_markup=admin_menu()
+            )
+        else:
+            bot.send_message(
+                message.chat.id,
+                "❌ <b>Wrong admin password.</b>\nPlease try again or /cancel."
+            )
         return
 
-    if data.get("type") != "menu_text":
-        return
-
-    key = data.get("key")
-
-    if key not in TEXT_DEFAULTS:
+    if uid not in admin_session:
         admin_input.pop(uid, None)
+        return
+
+    if typ == "menu_text":
+        key=data.get("key")
+        new_text=(message.text or "").strip()
+        if key not in TEXT_DEFAULTS:
+            admin_input.pop(uid,None); return
+        if not new_text:
+            bot.send_message(message.chat.id,"❌ Text खाली नहीं हो सकता।"); return
+        if len(new_text)>100:
+            bot.send_message(message.chat.id,"❌ Text 100 characters के अंदर रखें।"); return
+        save_setting("labels",key,new_text)
+        admin_input.pop(uid,None)
         bot.send_message(
             message.chat.id,
-            "❌ Invalid text setting.",
-            reply_markup=admin_menu()
+            admin_card("MAIN MENU TEXT UPDATED",
+                       f"<b>Button:</b> {esc(key.title())}\n<b>New Text:</b> {esc(new_text)}\n\n"
+                       "अब नया text main menu में दिखाई देगा."),
+            reply_markup=admin_texts_menu()
         )
         return
 
-    new_text = (message.text or "").strip()
-
-    if not new_text:
-        bot.send_message(
-            message.chat.id,
-            "❌ Text खाली नहीं हो सकता।\n"
-            "कृपया नया text भेजें:"
-        )
+    if typ == "payment":
+        field=data.get("field")
+        value=(message.text or "").strip()
+        if not value:
+            bot.send_message(message.chat.id,"❌ Value खाली नहीं हो सकती."); return
+        save_setting("payment",field,value)
+        admin_input.pop(uid,None)
+        bot.send_message(message.chat.id,"✅ <b>Payment setting updated.</b>",reply_markup=admin_menu())
         return
 
-    if len(new_text) > 100:
-        bot.send_message(
-            message.chat.id,
-            "❌ Text बहुत लंबा है।\n"
-            "100 characters के अंदर रखें और फिर भेजें:"
-        )
+    if typ == "add_reseller":
+        raw=(message.text or "").strip().lstrip("@")
+        if not raw:
+            bot.send_message(message.chat.id,"❌ Invalid reseller."); return
+        if raw.isdigit():
+            rid=int(raw); username=""
+        else:
+            username=raw
+            rid=0
+            bot.send_message(message.chat.id,"ℹ️ Username मिला है. Discount set करने के लिए ID बेहतर है.\nफिर भी reseller record username से save होगा.")
+        conn=db()
+        if rid:
+            conn.execute("INSERT OR REPLACE INTO resellers(user_id,username,discount,created_at) VALUES(?,?,COALESCE((SELECT discount FROM resellers WHERE user_id=?),0),?)",
+                         (rid,username,rid,datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        else:
+            # Username-only entries use negative deterministic hash as local key.
+            rid=-abs(hash(username)) % 2147483647
+            conn.execute("INSERT OR REPLACE INTO resellers(user_id,username,discount,created_at) VALUES(?,?,0,?)",
+                         (rid,username,datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit(); conn.close()
+        admin_input.pop(uid,None)
+        bot.send_message(message.chat.id,"✅ <b>Reseller added.</b>",reply_markup=reseller_markup())
         return
 
-    # Save immediately to bot_settings.json.
-    save_setting("labels", key, new_text)
+    if typ == "user_search":
+        query=(message.text or "").strip().lstrip("@")
+        conn=db()
+        row=None
+        if query.isdigit():
+            row=conn.execute("SELECT * FROM users WHERE user_id=?", (int(query),)).fetchone()
+        else:
+            row=conn.execute("SELECT * FROM users WHERE lower(username)=lower(?)", (query,)).fetchone()
+        conn.close()
+        admin_input.pop(uid,None)
+        if not row:
+            bot.send_message(message.chat.id,"❌ User not found.",reply_markup=admin_menu()); return
+        conn=db()
+        stats=conn.execute("SELECT COUNT(*) c,COALESCE(SUM(price),0) s FROM orders WHERE user_id=?", (row["user_id"],)).fetchone()
+        tx=conn.execute("SELECT * FROM transactions WHERE user_id=? ORDER BY id DESC LIMIT 10",(row["user_id"],)).fetchall()
+        keys=conn.execute("SELECT product,duration,status,created_at FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10",(row["user_id"],)).fetchall()
+        conn.close()
+        tx_text="\n".join(f"• {esc(t['kind'])}: {money(t['amount'])} — {esc(t['created_at'])}" for t in tx) or "No transactions found"
+        key_text="\n".join(f"• {esc(k['product'])} | {esc(k['duration'])}" for k in keys) or "No keys purchased yet"
+        body=(f"👤 <b>{esc(row['name'])}</b> @{esc(row['username'] or 'unknown')}\n"
+              f"🆔 ID: <code>{row['user_id']}</code>\n"
+              f"🌐 BEST TRUSTED SELLER IN WORLD (INCLUDING ALL...)\n\n"
+              "━━━━━━━━━━━━━━━━━━━━\n<b>ACCOUNT SUMMARY</b>\n\n"
+              f"💰 Balance: <b>{money(row['balance'])}</b>\n"
+              f"💸 Total Spent: <b>{money(stats['s'])}</b>\n"
+              f"📦 Orders: <b>{stats['c']}</b>\n"
+              f"📅 Joined: <b>{esc(row['joined_at'])}</b>\n\n"
+              "━━━━━━━━━━━━━━━━━━━━\n<b>TRANSACTION HISTORY</b>\n\n"+tx_text+
+              "\n\n━━━━━━━━━━━━━━━━━━━━\n<b>PURCHASED KEYS</b>\n\n"+key_text+
+              "\n\n━━━━━━━━━━━━━━━━━━━━\n<b>ADMIN CONTROLS</b>")
+        m=InlineKeyboardMarkup()
+        m.add(make_button("🚫 BAN USER",callback_data=f"admin_ban_{row['user_id']}",style="danger"))
+        m.add(make_button("➕ ADD BALANCE",callback_data=f"admin_addbal_{row['user_id']}",style="success"),
+              make_button("➖ REMOVE",callback_data=f"admin_rembal_{row['user_id']}",style="danger"))
+        m.add(make_button("🔴 BACK",callback_data="admin_home",style="danger"))
+        bot.send_message(message.chat.id,admin_card("USER PROFILE",body,"👤"),reply_markup=m)
+        return
 
-    # Remove pending state.
-    admin_input.pop(uid, None)
+    if typ == "balance":
+        try:
+            amount=float((message.text or "").strip())
+            target=int(data["target"])
+        except Exception:
+            bot.send_message(message.chat.id,"❌ Invalid amount."); return
+        action=data["action"]
+        conn=db()
+        row=conn.execute("SELECT balance FROM users WHERE user_id=?",(target,)).fetchone()
+        if not row:
+            conn.close(); bot.send_message(message.chat.id,"❌ User not found."); admin_input.pop(uid,None); return
+        delta=amount if action=="add" else -amount
+        new=max(0,float(row["balance"])+delta)
+        conn.execute("UPDATE users SET balance=? WHERE user_id=?",(new,target))
+        conn.execute("INSERT INTO transactions(user_id,kind,amount,note,created_at) VALUES(?,?,?,?,?)",
+                     (target,"ADMIN_ADD" if action=="add" else "ADMIN_REMOVE",delta,"Admin balance adjustment",datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit(); conn.close(); admin_input.pop(uid,None)
+        bot.send_message(message.chat.id,f"✅ Balance updated.\nUser: <code>{target}</code>\nNew Balance: <b>{money(new)}</b>",reply_markup=admin_menu())
+        try:
+            bot.send_message(target,f"💰 <b>Balance Updated</b>\nYour new balance is <b>{money(new)}</b>.")
+        except Exception: pass
+        return
 
-    bot.send_message(
-        message.chat.id,
-        "<b>✅ MAIN MENU TEXT UPDATED</b>\n\n"
-        f"<b>Button:</b> {esc(key.title())}\n"
-        f"<b>New Text:</b> {esc(new_text)}\n\n"
-        "अब नया text main menu में दिखाई देगा.",
-        reply_markup=admin_texts_menu()
-    )
+    if typ == "broadcast":
+        admin_input.pop(uid,None)
+        sent=0; failed=0
+        conn=db(); rows=conn.execute("SELECT user_id FROM users WHERE blocked=0").fetchall(); conn.close()
+        for r in rows:
+            try:
+                bot.copy_message(r["user_id"], message.chat.id, message.message_id)
+                sent+=1
+            except Exception:
+                failed+=1
+        bot.send_message(message.chat.id,
+                         admin_card("BROADCAST COMPLETE",
+                                    f"✅ Sent: <b>{sent}</b>\n❌ Failed: <b>{failed}</b>","📣"),
+                         reply_markup=admin_menu())
+        return
 
 # ============================================================
 # CALLBACKS & TICKETS
@@ -1846,35 +2056,94 @@ def handle_ticket_message(message):
 # RENDER SERVER & STARTUP
 # ============================================================
 
+WEB_HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VICKY X MODE STORE — Admin Panel</title>
+<style>
+body{margin:0;background:#f7f9fc;font-family:Arial,sans-serif;color:#263238}
+.wrap{max-width:720px;margin:auto;padding:24px}
+h1{color:#2589d9;margin:0 0 6px}.sub{color:#7b8a9a;margin-bottom:26px}
+.card{background:#fff;border:1px solid #e6ebf1;border-radius:22px;padding:22px;margin:18px 0;box-shadow:0 4px 16px #00000008}
+label{display:block;font-weight:700;margin:14px 0 8px}input,textarea,select{width:100%;box-sizing:border-box;border:1px solid #dce3ea;border-radius:15px;padding:15px;font-size:16px}
+button{border:0;border-radius:14px;padding:14px 20px;background:#3296e6;color:#fff;font-size:16px;font-weight:700;cursor:pointer}button.green{background:#20bd70}button.red{background:#ef454a}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pill{display:inline-block;background:#eef7ff;color:#2589d9;padding:8px 14px;border-radius:18px;margin-top:10px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+<h1>Telegram Broadcast System</h1><div class="sub">Bulk messaging · Premium emoji · Image + caption support</div>
+<div class="pill">Bot API v7.0+</div>
+<div class="card"><h2>⚙️ Bot Configuration</h2>
+<form method="post" action="/save">
+<label>Bot Token</label><input type="password" name="token" placeholder="1234567890:ABCdef...">
+<label>Users JSON (Chat IDs)</label><textarea name="users" rows="4" placeholder='[123456789]'></textarea>
+<button>💾 Save Configuration</button></form></div>
+<div class="card"><h2>✏️ Message Composer</h2>
+<form method="post" action="/broadcast">
+<label>Parse Mode</label><select name="parse"><option>None</option><option selected>HTML</option><option>Markdown</option><option>MarkdownV2</option></select>
+<label>Premium Custom Emoji ID (optional)</label><input name="emoji" placeholder="Custom emoji ID">
+<label>Message Text</label><textarea name="text" rows="7" placeholder="Your broadcast message... Use &lt;tg-emoji emoji-id='ID'&gt;💎&lt;/tg-emoji&gt;"></textarea>
+<label>Image URL (optional)</label><input name="image" placeholder="https://example.com/image.jpg">
+<label>Caption (for image)</label><textarea name="caption" rows="3" placeholder="Image caption"></textarea>
+<button>👁 Preview Message</button></form></div>
+<div class="card"><h2>⚠️ Broadcast Control</h2>
+<p>👥 Total Users: <b>{users}</b></p>
+<form method="post" action="/broadcast"><input type="hidden" name="confirm" value="1"><input type="hidden" name="text" value=""><button class="green">⚠️ Start Broadcast</button></form>
+</div></div></body></html>"""
+
 class RenderHealthHandler(BaseHTTPRequestHandler):
+    def _send(self, code, body, ctype="text/html; charset=utf-8"):
+        data=body.encode("utf-8")
+        self.send_response(code); self.send_header("Content-Type",ctype); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
+
     def do_GET(self):
-        self.send_response(200)
-        self.send_header(
-            "Content-Type",
-            "text/plain; charset=utf-8"
-        )
-        self.end_headers()
-        self.wfile.write(
-            b"VICKY X MODE SHOP BOT is running"
-        )
+        if self.path.startswith("/health"):
+            self._send(200,"VICKY X MODE SHOP BOT is running","text/plain; charset=utf-8"); return
+        conn=db(); count=conn.execute("SELECT COUNT(*) FROM users WHERE blocked=0").fetchone()[0]; conn.close()
+        self._send(200, WEB_HTML.replace("{users}",str(count)))
+
+    def do_POST(self):
+        length=int(self.headers.get("Content-Length","0") or 0)
+        raw=self.rfile.read(length).decode("utf-8","replace")
+        form=urllib.parse.parse_qs(raw)
+        path=self.path
+        if path=="/save":
+            users_raw=form.get("users",[""])[0]
+            if users_raw:
+                try:
+                    ids=json.loads(users_raw)
+                    conn=db()
+                    for x in ids:
+                        if str(x).lstrip("-").isdigit():
+                            conn.execute("INSERT OR IGNORE INTO users(user_id,name,username,joined_at) VALUES(?,?,?,?)",
+                                         (int(x),"Web User","",datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    conn.commit(); conn.close()
+                except Exception: pass
+            self._send(200,"<h2>Configuration saved.</h2><a href='/'>Back</a>"); return
+        if path=="/broadcast":
+            text=form.get("text",[""])[0]
+            image=form.get("image",[""])[0]
+            caption=form.get("caption",[""])[0]
+            if not text and not image:
+                self._send(400,"Message text or image URL is required."); return
+            conn=db(); rows=conn.execute("SELECT user_id FROM users WHERE blocked=0").fetchall(); conn.close()
+            sent=failed=0
+            for r in rows:
+                try:
+                    if image:
+                        bot.send_photo(r["user_id"], image, caption=caption or text, parse_mode="HTML")
+                    else:
+                        bot.send_message(r["user_id"], text, parse_mode="HTML")
+                    sent+=1
+                except Exception: failed+=1
+            self._send(200,f"<h2>Broadcast complete</h2><p>Sent: {sent} · Failed: {failed}</p><a href='/'>Back</a>"); return
+        self._send(404,"Not found")
 
     def log_message(self, format, *args):
         pass
 
 def start_http_server():
-    port = int(
-        os.environ.get("PORT", "10000")
-    )
-
-    server = HTTPServer(
-        ("0.0.0.0", port),
-        RenderHealthHandler
-    )
-
-    print(
-        f"HTTP health server running on port {port}"
-    )
-
+    port=int(os.environ.get("PORT","10000"))
+    server=HTTPServer(("0.0.0.0",port),RenderHealthHandler)
+    print(f"HTTP admin/broadcast panel running on port {port}")
     server.serve_forever()
 
 if __name__ == "__main__":
