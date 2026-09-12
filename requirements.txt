@@ -1,5 +1,4 @@
-Flask
+flask
 requests
+yt-dlp
 gunicorn
-yt-dlp[default]
-yt-dlp-ejs
