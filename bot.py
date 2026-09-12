@@ -1,7 +1,6 @@
 import os
 import re
 import html
-import json
 import threading
 import requests
 
@@ -28,28 +27,51 @@ app = Flask(__name__)
 
 
 # =========================================================
-# CUSTOM EMOJI
+# CUSTOM EMOJI IDs
+# =========================================================
+# Yahan se button ke custom emoji change kar sakte ho.
 # =========================================================
 
-INSTAGRAM_EMOJI_ID = "6118634049381603875"
-YOUTUBE_EMOJI_ID = "6118384112349748198"
-HELP_EMOJI_ID = "6116318821490893304"
+EMOJI_INSTAGRAM = "6118634049381603875"
+EMOJI_YOUTUBE = "6118384112349748198"
+EMOJI_HELP = "6116318821490893304"
+
+# Back button custom emoji
+EMOJI_BACK = "6336928824512483113"
+
+# Copy buttons
+EMOJI_COPY_TITLE = "6118384112349748198"
+EMOJI_COPY_DESCRIPTION = "6118384112349748198"
+EMOJI_COPY_TAGS = "6118384112349748198"
 
 
 # =========================================================
-# REQUEST SESSION
+# CHAT STATE
+# =========================================================
+# Har chat ke last bot message ko yaad rakhenge.
+# Isse naya message bhejne ke bajay purana message edit hoga.
 # =========================================================
 
-SESSION = requests.Session()
+CHAT_STATE = {}
 
-SESSION.headers.update({
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/140.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9"
-})
+STATE_LOCK = threading.Lock()
+
+
+def set_last_bot_message(chat_id, message_id):
+    with STATE_LOCK:
+        CHAT_STATE[chat_id] = {
+            "message_id": message_id
+        }
+
+
+def get_last_bot_message(chat_id):
+    with STATE_LOCK:
+        state = CHAT_STATE.get(chat_id)
+
+        if state:
+            return state.get("message_id")
+
+    return None
 
 
 # =========================================================
@@ -58,15 +80,9 @@ SESSION.headers.update({
 
 def telegram(method, data=None):
 
-    if not BOT_TOKEN:
-        return {
-            "ok": False,
-            "description": "BOT_TOKEN missing"
-        }
-
     try:
 
-        response = SESSION.post(
+        response = requests.post(
             f"{API_URL}/{method}",
             json=data or {},
             timeout=60
@@ -76,6 +92,7 @@ def telegram(method, data=None):
             return response.json()
 
         except Exception:
+
             return {
                 "ok": False,
                 "description": response.text
@@ -83,7 +100,7 @@ def telegram(method, data=None):
 
     except Exception as e:
 
-        print("Telegram API Error:", repr(e))
+        print("Telegram API Error:", e)
 
         return {
             "ok": False,
@@ -107,14 +124,38 @@ def send_message(chat_id, text, keyboard=None):
     if keyboard:
         data["reply_markup"] = keyboard
 
-    return telegram("sendMessage", data)
+    result = telegram(
+        "sendMessage",
+        data
+    )
+
+    # Last bot message save
+    if (
+        result
+        and result.get("ok")
+        and result.get("result")
+    ):
+
+        message_id = result["result"]["message_id"]
+
+        set_last_bot_message(
+            chat_id,
+            message_id
+        )
+
+    return result
 
 
 # =========================================================
 # EDIT MESSAGE
 # =========================================================
 
-def edit_message(chat_id, message_id, text, keyboard=None):
+def edit_message(
+    chat_id,
+    message_id,
+    text,
+    keyboard=None
+):
 
     data = {
         "chat_id": chat_id,
@@ -127,29 +168,56 @@ def edit_message(chat_id, message_id, text, keyboard=None):
     if keyboard:
         data["reply_markup"] = keyboard
 
-    return telegram("editMessageText", data)
+    result = telegram(
+        "editMessageText",
+        data
+    )
+
+    return result
 
 
 # =========================================================
-# DELETE MESSAGE
+# EDIT OR SEND
 # =========================================================
 
-def delete_message(chat_id, message_id):
+def edit_or_send(
+    chat_id,
+    text,
+    keyboard=None
+):
 
-    return telegram(
-        "deleteMessage",
-        {
-            "chat_id": chat_id,
-            "message_id": message_id
-        }
+    message_id = get_last_bot_message(chat_id)
+
+    if message_id:
+
+        result = edit_message(
+            chat_id,
+            message_id,
+            text,
+            keyboard
+        )
+
+        # Agar edit successful hua
+        if result and result.get("ok"):
+
+            return result
+
+    # Agar edit fail ho gaya to naya message
+    return send_message(
+        chat_id,
+        text,
+        keyboard
     )
 
 
 # =========================================================
-# CALLBACK
+# CALLBACK ANSWER
 # =========================================================
 
-def answer_callback(callback_id, text=None):
+def answer_callback(
+    callback_id,
+    text=None
+):
 
     data = {
         "callback_query_id": callback_id
@@ -168,7 +236,12 @@ def answer_callback(callback_id, text=None):
 # BUTTON
 # =========================================================
 
-def btn(text, data, style="primary", emoji_id=None):
+def btn(
+    text,
+    data,
+    style="primary",
+    emoji_id=None
+):
 
     button = {
         "text": text,
@@ -177,13 +250,16 @@ def btn(text, data, style="primary", emoji_id=None):
     }
 
     if emoji_id:
-        button["icon_custom_emoji_id"] = emoji_id
+
+        button[
+            "icon_custom_emoji_id"
+        ] = emoji_id
 
     return button
 
 
 # =========================================================
-# HOME
+# HOME / MAIN KEYBOARD
 # =========================================================
 
 def home_keyboard():
@@ -196,14 +272,14 @@ def home_keyboard():
                     "Instagram",
                     "instagram",
                     "primary",
-                    INSTAGRAM_EMOJI_ID
+                    EMOJI_INSTAGRAM
                 ),
 
                 btn(
                     "YouTube",
                     "youtube",
                     "danger",
-                    YOUTUBE_EMOJI_ID
+                    EMOJI_YOUTUBE
                 )
             ],
 
@@ -212,7 +288,7 @@ def home_keyboard():
                     "Help & Guide",
                     "help",
                     "primary",
-                    HELP_EMOJI_ID
+                    EMOJI_HELP
                 )
             ]
         ]
@@ -220,20 +296,23 @@ def home_keyboard():
 
 
 # =========================================================
-# BACK
+# BACK KEYBOARD
 # =========================================================
 
 def back_keyboard():
 
     return {
         "inline_keyboard": [
+
             [
                 btn(
-                    "⌂ Home",
+                    "Back",
                     "home",
-                    "primary"
+                    "danger",
+                    EMOJI_BACK
                 )
             ]
+
         ]
     }
 
@@ -244,21 +323,15 @@ def back_keyboard():
 
 def detect_platform(url):
 
-    if not url:
-        return None
-
     url = url.lower().strip()
 
-    if (
-        "instagram.com/" in url
-        or "instagr.am/" in url
-    ):
+    if "instagram.com" in url:
         return "instagram"
 
     if (
-        "youtube.com/" in url
-        or "youtu.be/" in url
-        or "youtube-nocookie.com/" in url
+        "youtube.com" in url
+        or "youtu.be" in url
+        or "youtube-nocookie.com" in url
     ):
         return "youtube"
 
@@ -266,7 +339,7 @@ def detect_platform(url):
 
 
 # =========================================================
-# CLEAN
+# CLEAN TEXT
 # =========================================================
 
 def clean(value):
@@ -276,25 +349,17 @@ def clean(value):
 
     value = str(value)
 
-    value = value.replace("\r\n", "\n")
-    value = value.replace("\r", "\n")
+    value = value.replace(
+        "\r\n",
+        "\n"
+    )
+
+    value = value.replace(
+        "\r",
+        "\n"
+    )
 
     return value.strip()
-
-
-# =========================================================
-# URL CLEANER
-# =========================================================
-
-def clean_url(url):
-
-    url = clean(url)
-
-    # Remove Telegram / copied spaces
-    url = url.replace("\n", "")
-    url = url.replace(" ", "")
-
-    return url
 
 
 # =========================================================
@@ -319,122 +384,47 @@ def get_hashtags(text):
             ".,!?;:()[]{}<>\"'"
         )
 
-        if tag and tag not in result:
+        if (
+            tag
+            and tag not in result
+        ):
+
             result.append(tag)
 
     return result
 
 
 # =========================================================
-# HTML SAFE
+# YOUTUBE TAGS
 # =========================================================
 
-def safe_html(text):
+def get_youtube_tags(info):
 
-    return html.escape(
-        clean(text),
-        quote=False
-    )
+    tags = info.get("tags") or []
 
+    result = []
 
-# =========================================================
-# YOUTUBE URL NORMALIZER
-# =========================================================
+    for tag in tags:
 
-def normalize_youtube_url(url):
+        tag = clean(tag)
 
-    url = clean_url(url)
+        if not tag:
+            continue
 
-    # Shorts
-    match = re.search(
-        r"youtube\.com/shorts/([A-Za-z0-9_-]+)",
-        url,
-        re.IGNORECASE
-    )
+        if tag not in result:
 
-    if match:
+            result.append(tag)
 
-        video_id = match.group(1)
-
-        return (
-            f"https://www.youtube.com/watch?v={video_id}"
-        )
-
-    # youtu.be
-    match = re.search(
-        r"youtu\.be/([A-Za-z0-9_-]+)",
-        url,
-        re.IGNORECASE
-    )
-
-    if match:
-
-        video_id = match.group(1)
-
-        return (
-            f"https://www.youtube.com/watch?v={video_id}"
-        )
-
-    # watch?v=
-    match = re.search(
-        r"[?&]v=([A-Za-z0-9_-]+)",
-        url,
-        re.IGNORECASE
-    )
-
-    if match:
-
-        video_id = match.group(1)
-
-        return (
-            f"https://www.youtube.com/watch?v={video_id}"
-        )
-
-    return url
+    return result
 
 
 # =========================================================
-# YOUTUBE VIDEO ID
+# YT-DLP EXTRACTOR
 # =========================================================
 
-def get_youtube_id(url):
+def extract_with_ytdlp(url):
 
-    url = clean_url(url)
-
-    patterns = [
-
-        r"youtube\.com/shorts/([A-Za-z0-9_-]+)",
-
-        r"youtube\.com/watch\?v=([A-Za-z0-9_-]+)",
-
-        r"youtube\.com/watch\?.*?[&]v=([A-Za-z0-9_-]+)",
-
-        r"youtu\.be/([A-Za-z0-9_-]+)",
-
-        r"youtube-nocookie\.com/embed/([A-Za-z0-9_-]+)"
-    ]
-
-    for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            url,
-            re.IGNORECASE
-        )
-
-        if match:
-            return match.group(1)
-
-    return None
-
-
-# =========================================================
-# YT-DLP OPTIONS
-# =========================================================
-
-def ytdlp_options():
-
-    return {
+    options = {
 
         "quiet": True,
 
@@ -446,227 +436,27 @@ def ytdlp_options():
 
         "extract_flat": False,
 
-        "socket_timeout": 30,
-
-        "retries": 2,
-
-        "fragment_retries": 2,
-
-        "nocheckcertificate": True,
-
         "http_headers": {
+
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 "
                 "(KHTML, like Gecko) "
-                "Chrome/140.0.0.0 Safari/537.36"
-            ),
-
-            "Accept-Language":
-                "en-US,en;q=0.9"
-        },
-
-        # Current YouTube client fallback
-        "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "android_vr",
-                    "tv_simply",
-                    "web_embedded"
-                ]
-            }
+                "Chrome/140.0.0.0 "
+                "Safari/537.36"
+            )
         }
     }
 
+    with YoutubeDL(options) as ydl:
 
-# =========================================================
-# YT-DLP EXTRACT
-# =========================================================
-
-def extract_with_ytdlp(url):
-
-    url = normalize_youtube_url(url)
-
-    print(
-        "YT-DLP extracting:",
-        url
-    )
-
-    options = ytdlp_options()
-
-    try:
-
-        with YoutubeDL(options) as ydl:
-
-            info = ydl.extract_info(
-                url,
-                download=False
-            )
-
-        if not info:
-            raise Exception(
-                "yt-dlp returned empty data"
-            )
-
-        return info
-
-    except Exception as e:
-
-        print(
-            "YT-DLP ERROR:",
-            repr(e)
+        info = ydl.extract_info(
+            url,
+            download=False
         )
 
-        raise
-
-
-# =========================================================
-# YOUTUBE META FALLBACK
-# =========================================================
-
-def youtube_meta_fallback(url):
-
-    url = normalize_youtube_url(url)
-
-    video_id = get_youtube_id(url)
-
-    if not video_id:
-        raise Exception(
-            "YouTube video ID not found"
-        )
-
-    print(
-        "Using YouTube metadata fallback:",
-        video_id
-    )
-
-    # -----------------------------------------------------
-    # oEmbed
-    # -----------------------------------------------------
-
-    title = ""
-
-    try:
-
-        oembed_url = (
-            "https://www.youtube.com/oembed"
-            f"?url=https://www.youtube.com/watch?v={video_id}"
-            "&format=json"
-        )
-
-        response = SESSION.get(
-            oembed_url,
-            timeout=20
-        )
-
-        if response.ok:
-
-            data = response.json()
-
-            title = clean(
-                data.get("title")
-                or ""
-            )
-
-    except Exception as e:
-
-        print(
-            "oEmbed error:",
-            repr(e)
-        )
-
-    # -----------------------------------------------------
-    # YouTube page
-    # -----------------------------------------------------
-
-    description = ""
-
-    page_title = ""
-
-    try:
-
-        page_url = (
-            f"https://www.youtube.com/watch?v={video_id}"
-        )
-
-        response = SESSION.get(
-            page_url,
-            timeout=30
-        )
-
-        response.raise_for_status()
-
-        page = response.text
-
-        # og:title
-        match = re.search(
-            r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\'](.*?)["\']',
-            page,
-            re.IGNORECASE | re.DOTALL
-        )
-
-        if match:
-
-            page_title = html.unescape(
-                match.group(1)
-            ).strip()
-
-        # og:description
-        match = re.search(
-            r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\'](.*?)["\']',
-            page,
-            re.IGNORECASE | re.DOTALL
-        )
-
-        if match:
-
-            description = html.unescape(
-                match.group(1)
-            ).strip()
-
-        # description meta
-        if not description:
-
-            match = re.search(
-                r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
-                page,
-                re.IGNORECASE | re.DOTALL
-            )
-
-            if match:
-
-                description = html.unescape(
-                    match.group(1)
-                ).strip()
-
-    except Exception as e:
-
-        print(
-            "YouTube page fallback error:",
-            repr(e)
-        )
-
-    if not title:
-        title = page_title
-
-    if not title:
-        title = "Not available"
-
-    if not description:
-        description = "Not available"
-
-    return {
-
-        "platform": "youtube",
-
-        "title": title,
-
-        "caption": description,
-
-        "hashtags": get_hashtags(
-            description
-        )
-    }
+    return info
 
 
 # =========================================================
@@ -678,17 +468,19 @@ def instagram_fallback(url):
     headers = {
 
         "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 "
             "(KHTML, like Gecko) "
-            "Chrome/140.0.0.0 Safari/537.36"
+            "Chrome/140.0.0.0 "
+            "Safari/537.36"
         ),
 
         "Accept-Language":
             "en-US,en;q=0.9"
     }
 
-    response = SESSION.get(
+    response = requests.get(
         url,
         headers=headers,
         timeout=30
@@ -737,9 +529,11 @@ def instagram_fallback(url):
 
         "title": title,
 
-        "description": description,
+        "description":
+            description,
 
-        "webpage_url": url
+        "webpage_url":
+            url
     }
 
 
@@ -749,8 +543,6 @@ def instagram_fallback(url):
 
 def extract_data(url):
 
-    url = clean_url(url)
-
     platform = detect_platform(url)
 
     if not platform:
@@ -758,6 +550,7 @@ def extract_data(url):
         raise ValueError(
             "Only Instagram and YouTube links are supported."
         )
+
 
     # =====================================================
     # INSTAGRAM
@@ -801,11 +594,12 @@ def extract_data(url):
                     hashtags
             }
 
+
         except Exception as first_error:
 
             print(
                 "Instagram yt-dlp failed:",
-                repr(first_error)
+                first_error
             )
 
             try:
@@ -843,16 +637,18 @@ def extract_data(url):
                         hashtags
                 }
 
+
             except Exception as second_error:
 
                 print(
                     "Instagram fallback failed:",
-                    repr(second_error)
+                    second_error
                 )
 
                 raise Exception(
                     "Instagram data could not be extracted."
                 )
+
 
     # =====================================================
     # YOUTUBE
@@ -860,109 +656,79 @@ def extract_data(url):
 
     if platform == "youtube":
 
-        normalized_url = normalize_youtube_url(
-            url
-        )
-
-        # First yt-dlp
         try:
 
             info = extract_with_ytdlp(
-                normalized_url
+                url
             )
-
-            title = clean(
-                info.get("title")
-                or ""
-            )
-
-            description = clean(
-                info.get("description")
-                or ""
-            )
-
-            hashtags = get_hashtags(
-                description
-            )
-
-            # YouTube tags
-            youtube_tags = (
-                info.get("tags")
-                or []
-            )
-
-            for tag in youtube_tags:
-
-                tag = clean(tag)
-
-                if not tag:
-                    continue
-
-                if not tag.startswith("#"):
-
-                    tag = "#" + re.sub(
-                        r"\s+",
-                        "",
-                        tag
-                    )
-
-                if tag not in hashtags:
-
-                    hashtags.append(tag)
-
-            # If yt-dlp got at least useful data
-            if title or description:
-
-                return {
-
-                    "platform":
-                        "youtube",
-
-                    "title":
-                        title,
-
-                    "caption":
-                        description,
-
-                    "hashtags":
-                        hashtags
-                }
 
         except Exception as e:
 
             print(
-                "YouTube yt-dlp failed:",
-                repr(e)
-            )
-
-        # -------------------------------------------------
-        # FALLBACK
-        # -------------------------------------------------
-
-        try:
-
-            return youtube_meta_fallback(
-                normalized_url
-            )
-
-        except Exception as fallback_error:
-
-            print(
-                "YouTube fallback failed:",
-                repr(fallback_error)
+                "YouTube extraction failed:",
+                e
             )
 
             raise Exception(
-                "YouTube extraction failed. "
-                "yt-dlp and metadata fallback both failed."
+                "YouTube data could not be extracted."
             )
 
 
+        title = clean(
+            info.get("title")
+            or ""
+        )
+
+
+        # YouTube DESCRIPTION
+        description = clean(
+            info.get("description")
+            or ""
+        )
+
+
+        # YouTube TAGS
+        youtube_tags = get_youtube_tags(
+            info
+        )
+
+
+        return {
+
+            "platform":
+                "youtube",
+
+            "title":
+                title,
+
+            "description":
+                description,
+
+            "tags":
+                youtube_tags
+        }
+
+
 # =========================================================
-# SPLIT COPY
+# SAFE HTML
 # =========================================================
 
-def split_for_copy(text, size=256):
+def safe_html(text):
+
+    return html.escape(
+        clean(text),
+        quote=False
+    )
+
+
+# =========================================================
+# SPLIT COPY TEXT
+# =========================================================
+
+def split_for_copy(
+    text,
+    size=256
+):
 
     text = clean(text)
 
@@ -970,7 +736,9 @@ def split_for_copy(text, size=256):
         return []
 
     return [
+
         text[i:i + size]
+
         for i in range(
             0,
             len(text),
@@ -986,36 +754,53 @@ def split_for_copy(text, size=256):
 def copy_buttons(
     label,
     text,
-    style="success"
+    emoji_id
 ):
 
-    chunks = split_for_copy(text)
+    chunks = split_for_copy(
+        text
+    )
 
     if not chunks:
         return []
 
+
     rows = []
+
+
+    # -----------------------------------------------------
+    # Single button
+    # -----------------------------------------------------
 
     if len(chunks) == 1:
 
         rows.append([
 
-            {
-                "text":
-                    f"📋 Copy {label}",
-
-                "copy_text": {
-                    "text":
-                        chunks[0]
-                },
-
-                "style":
-                    style
-            }
+            btn(
+                f"Copy {label}",
+                "nothing",
+                "success",
+                emoji_id
+            )
 
         ])
 
+        # Replace callback button with copy_text button
+        rows[-1][0].pop(
+            "callback_data",
+            None
+        )
+
+        rows[-1][0]["copy_text"] = {
+            "text": chunks[0]
+        }
+
         return rows
+
+
+    # -----------------------------------------------------
+    # Multiple copy buttons
+    # -----------------------------------------------------
 
     current_row = []
 
@@ -1024,24 +809,30 @@ def copy_buttons(
         start=1
     ):
 
-        button = {
+        button = btn(
 
-            "text":
-                f"📋 {label} {index}",
+            f"{label} {index}",
 
-            "copy_text": {
+            "nothing",
 
-                "text":
-                    chunk
-            },
+            "success",
 
-            "style":
-                style
+            emoji_id
+        )
+
+        button.pop(
+            "callback_data",
+            None
+        )
+
+        button["copy_text"] = {
+            "text": chunk
         }
 
         current_row.append(
             button
         )
+
 
         if len(current_row) == 2:
 
@@ -1051,20 +842,183 @@ def copy_buttons(
 
             current_row = []
 
+
     if current_row:
 
         rows.append(
             current_row
         )
 
+
     return rows
 
 
 # =========================================================
-# RESULT
+# RESULT MESSAGE
 # =========================================================
 
-def send_result(
+def result_text(data):
+
+    platform = data.get(
+        "platform"
+    )
+
+
+    # =====================================================
+    # INSTAGRAM RESULT
+    # =====================================================
+
+    if platform == "instagram":
+
+        title = clean(
+            data.get("title")
+            or ""
+        )
+
+        caption = clean(
+            data.get("caption")
+            or ""
+        )
+
+        hashtags = data.get(
+            "hashtags"
+        ) or []
+
+
+        hashtag_text = " ".join(
+
+            clean(x)
+
+            for x in hashtags
+
+            if clean(x)
+        )
+
+
+        if not title:
+            title = "Not available"
+
+        if not caption:
+            caption = "Not available"
+
+        if not hashtag_text:
+            hashtag_text = "No hashtags found"
+
+
+        text = (
+
+            "<b>INSTAGRAM RESULT</b>\n"
+
+            "━━━━━━━━━━━━━━━━━━\n\n"
+
+            "<b>TITLE</b>\n"
+
+            f"{safe_html(title)}\n\n"
+
+            "<b>CAPTION</b>\n"
+
+            f"{safe_html(caption)}\n\n"
+
+            "<b>HASHTAGS</b>\n"
+
+            f"{safe_html(hashtag_text)}\n\n"
+
+            "━━━━━━━━━━━━━━━━━━\n"
+
+            "<b>VICKYSTOR</b>"
+        )
+
+
+        return (
+            text,
+            title,
+            caption,
+            hashtag_text
+        )
+
+
+    # =====================================================
+    # YOUTUBE RESULT
+    # =====================================================
+
+    title = clean(
+        data.get("title")
+        or ""
+    )
+
+    description = clean(
+        data.get("description")
+        or ""
+    )
+
+    tags = data.get(
+        "tags"
+    ) or []
+
+
+    tags_text = ", ".join(
+
+        clean(tag)
+
+        for tag in tags
+
+        if clean(tag)
+    )
+
+
+    if not title:
+        title = "Not available"
+
+    if not description:
+        description = "Not available"
+
+    if not tags_text:
+        tags_text = "No tags found"
+
+
+    # -----------------------------------------------------
+    # IMPORTANT:
+    # YouTube mein Caption / Hashtags hata diye.
+    # Sirf Title + Description + Tags.
+    # -----------------------------------------------------
+
+    text = (
+
+        "<b>YOUTUBE RESULT</b>\n"
+
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "<b>TITLE</b>\n"
+
+        f"{safe_html(title)}\n\n"
+
+        "<b>DESCRIPTION</b>\n"
+
+        f"{safe_html(description)}\n\n"
+
+        "<b>TAGS</b>\n"
+
+        f"{safe_html(tags_text)}\n\n"
+
+        "━━━━━━━━━━━━━━━━━━\n"
+
+        "<b>VICKYSTOR</b>"
+    )
+
+
+    return (
+        text,
+        title,
+        description,
+        tags_text
+    )
+
+
+# =========================================================
+# SEND / EDIT RESULT
+# =========================================================
+
+def show_result(
     chat_id,
     data
 ):
@@ -1073,123 +1027,151 @@ def send_result(
         "platform"
     )
 
-    title = clean(
-        data.get("title")
-        or ""
+
+    (
+        text,
+        first,
+        second,
+        third
+    ) = result_text(
+        data
     )
 
-    caption = clean(
-        data.get("caption")
-        or ""
-    )
 
-    hashtags = (
-        data.get("hashtags")
-        or []
-    )
-
-    hashtag_text = " ".join(
-
-        [
-            clean(x)
-            for x in hashtags
-            if clean(x)
-        ]
-    )
-
-    if platform == "instagram":
-
-        heading = (
-            "📸 <b>INSTAGRAM RESULT</b>"
-        )
-
-    else:
-
-        heading = (
-            "▶️ <b>YOUTUBE RESULT</b>"
-        )
-
-    if not title:
-        title = "Not available"
-
-    if not caption:
-        caption = "Not available"
-
-    if not hashtag_text:
-        hashtag_text = "No hashtags found"
-
-    text = (
-
-        f"{heading}\n"
-
-        f"━━━━━━━━━━━━━━━━━━\n\n"
-
-        f"🎬 <b>TITLE</b>\n"
-        f"{safe_html(title)}\n\n"
-
-        f"📝 <b>CAPTION</b>\n"
-        f"{safe_html(caption)}\n\n"
-
-        f"🔖 <b>HASHTAGS</b>\n"
-        f"{safe_html(hashtag_text)}\n\n"
-
-        f"━━━━━━━━━━━━━━━━━━\n"
-
-        f"⚡ <b>VICKYSTOR</b>"
-    )
-
+    # Telegram safe message length
     if len(text) > 3900:
 
         text = (
 
-            text[:3650]
+            text[:3600]
 
             + "\n\n"
-              "<i>…Text is longer than "
-              "the display limit.</i>\n"
 
-            + "Use the Copy buttons below."
+            "<i>Text is too long for display.</i>"
         )
+
 
     keyboard = []
 
-    keyboard.extend(
 
-        copy_buttons(
-            "Title",
-            title,
-            "success"
+    # =====================================================
+    # INSTAGRAM COPY BUTTONS
+    # =====================================================
+
+    if platform == "instagram":
+
+        keyboard.extend(
+
+            copy_buttons(
+                "Title",
+                first,
+                EMOJI_COPY_TITLE
+            )
         )
-    )
 
-    keyboard.extend(
+        keyboard.extend(
 
-        copy_buttons(
-            "Caption",
-            caption,
-            "primary"
+            copy_buttons(
+                "Caption",
+                second,
+                EMOJI_COPY_DESCRIPTION
+            )
         )
-    )
 
-    keyboard.extend(
+        keyboard.extend(
 
-        copy_buttons(
-            "Hashtags",
-            hashtag_text,
-            "danger"
+            copy_buttons(
+                "Hashtags",
+                third,
+                EMOJI_COPY_TAGS
+            )
         )
-    )
+
+
+    # =====================================================
+    # YOUTUBE COPY BUTTONS
+    # =====================================================
+
+    else:
+
+        # Title
+        keyboard.extend(
+
+            copy_buttons(
+                "Title",
+                first,
+                EMOJI_COPY_TITLE
+            )
+        )
+
+
+        # Description
+        keyboard.extend(
+
+            copy_buttons(
+                "Description",
+                second,
+                EMOJI_COPY_DESCRIPTION
+            )
+        )
+
+
+        # Tags
+        keyboard.extend(
+
+            copy_buttons(
+                "Tags",
+                third,
+                EMOJI_COPY_TAGS
+            )
+        )
+
+
+    # =====================================================
+    # BACK BUTTON
+    # RED + CUSTOM EMOJI
+    # =====================================================
 
     keyboard.append([
 
         btn(
-            "⌂ Home",
+            "Back",
             "home",
-            "primary"
+            "danger",
+            EMOJI_BACK
         )
 
     ])
 
+
+    message_id = get_last_bot_message(
+        chat_id
+    )
+
+
+    if message_id:
+
+        result = edit_message(
+
+            chat_id,
+
+            message_id,
+
+            text,
+
+            {
+                "inline_keyboard":
+                    keyboard
+            }
+        )
+
+
+        if result and result.get("ok"):
+
+            return
+
+
+    # Fallback
     send_message(
 
         chat_id,
@@ -1212,14 +1194,48 @@ def process_url(
     url
 ):
 
-    loading = send_message(
+    # -----------------------------------------------------
+    # Processing same bot message mein
+    # -----------------------------------------------------
 
-        chat_id,
+    processing_text = (
 
-        "⏳ <b>Processing...</b>\n\n"
-        "⚡ Please wait while I extract "
+        "<b>Processing...</b>\n\n"
+
+        "Please wait while I extract "
         "the available data."
     )
+
+
+    message_id = get_last_bot_message(
+        chat_id
+    )
+
+
+    if message_id:
+
+        edit_message(
+
+            chat_id,
+
+            message_id,
+
+            processing_text,
+
+            back_keyboard()
+        )
+
+    else:
+
+        send_message(
+
+            chat_id,
+
+            processing_text,
+
+            back_keyboard()
+        )
+
 
     try:
 
@@ -1227,59 +1243,46 @@ def process_url(
             url
         )
 
-        if (
-            loading
-            and loading.get("ok")
-            and loading.get("result")
-        ):
 
-            delete_message(
-
-                chat_id,
-
-                loading[
-                    "result"
-                ][
-                    "message_id"
-                ]
-            )
-
-        send_result(
+        # Result same message mein
+        show_result(
             chat_id,
             data
         )
 
+
     except Exception as e:
 
         print(
-            "PROCESSING ERROR:",
-            repr(e)
+            "Processing error:",
+            e
         )
+
 
         error_text = (
-            "❌ <b>Extraction Failed</b>\n\n"
 
-            "Please make sure you sent a valid "
-            "public Instagram or YouTube link.\n\n"
+            "<b>Extraction Failed</b>\n\n"
 
-            "⚡ Try again with another link."
+            "Please make sure you sent a "
+            "valid public Instagram or "
+            "YouTube link.\n\n"
+
+            "Try again with another link."
         )
 
-        if (
-            loading
-            and loading.get("ok")
-            and loading.get("result")
-        ):
+
+        message_id = get_last_bot_message(
+            chat_id
+        )
+
+
+        if message_id:
 
             edit_message(
 
                 chat_id,
 
-                loading[
-                    "result"
-                ][
-                    "message_id"
-                ],
+                message_id,
 
                 error_text,
 
@@ -1299,33 +1302,45 @@ def process_url(
 
 
 # =========================================================
+# WELCOME MESSAGE
+# =========================================================
+
+def welcome_text():
+
+    # Text ke andar custom button emoji nahi lagaya.
+    # Emoji buttons mein hi rahenge.
+
+    return (
+
+        "<b>WELCOME TO VICKYSTOR</b>\n"
+
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "<b>Smart Caption Extractor</b>\n\n"
+
+        "<b>Instagram</b>\n"
+
+        "Caption + Hashtags\n\n"
+
+        "<b>YouTube</b>\n"
+
+        "Title + Description + Tags\n\n"
+
+        "<b>Choose a platform below</b>"
+    )
+
+
+# =========================================================
 # START
 # =========================================================
 
 def send_start(chat_id):
 
-    text = (
-
-        "👋 <b>WELCOME TO VICKYSTOR</b>\n"
-
-        "━━━━━━━━━━━━━━━━━━\n\n"
-
-        "⚡ <b>Smart Caption Extractor</b>\n\n"
-
-        "📸 <b>Instagram</b>\n"
-        "Caption + Hashtags\n\n"
-
-        "▶️ <b>YouTube</b>\n"
-        "Title + Description + Hashtags\n\n"
-
-        "🚀 <b>Choose a platform below</b>"
-    )
-
-    send_message(
+    edit_or_send(
 
         chat_id,
 
-        text,
+        welcome_text(),
 
         home_keyboard()
     )
@@ -1335,94 +1350,92 @@ def send_start(chat_id):
 # HELP
 # =========================================================
 
-def send_help(chat_id):
+def help_text():
 
-    text = (
+    return (
 
-        "ℹ️ <b>VICKYSTOR HELP</b>\n"
+        "<b>VICKYSTOR HELP</b>\n"
 
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-        "📌 <b>How to use?</b>\n\n"
+        "<b>How to use?</b>\n\n"
 
-        "1️⃣ Instagram या YouTube button दबाएँ।\n"
-        "2️⃣ अपना public link भेजें।\n"
-        "3️⃣ Bot available data निकाल देगा।\n"
-        "4️⃣ Result में दिए <b>Copy</b> button को दबाएँ।\n\n"
+        "1. Instagram या YouTube button दबाएँ।\n"
 
-        "✨ <b>Result में:</b>\n"
-        "🎬 Title\n"
-        "📝 Caption / Description\n"
-        "🔖 Hashtags\n\n"
+        "2. अपना public link भेजें।\n"
 
-        "⚡ <b>Simple • Fast • Copy Friendly</b>"
+        "3. Bot available data निकालेगा।\n"
+
+        "4. Copy button से text copy करें।\n\n"
+
+        "<b>Instagram:</b>\n"
+
+        "Title + Caption + Hashtags\n\n"
+
+        "<b>YouTube:</b>\n"
+
+        "Title + Description + Tags"
     )
 
-    send_message(
+
+def send_help(chat_id):
+
+    edit_or_send(
 
         chat_id,
 
-        text,
+        help_text(),
 
         back_keyboard()
     )
 
 
 # =========================================================
-# PLATFORM INFO
+# INSTAGRAM INFO
 # =========================================================
 
-def send_platform_info(
-    chat_id,
-    platform
-):
+def instagram_text():
 
-    if platform == "instagram":
+    return (
 
-        text = (
+        "<b>INSTAGRAM EXTRACTOR</b>\n"
 
-            "📸 <b>INSTAGRAM EXTRACTOR</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
 
-            "━━━━━━━━━━━━━━━━━━\n\n"
+        "<b>Instagram Reel / Post का "
+        "public link भेजें।</b>\n\n"
 
-            "🔗 <b>Instagram Reel / Post का "
-            "public link भेजें।</b>\n\n"
+        "Available Caption और Hashtags "
+        "निकालने की कोशिश की जाएगी।\n\n"
 
-            "✨ Available Caption और Hashtags "
-            "निकालने की कोशिश की जाएगी।\n\n"
-
-            "🚀 <i>अब अपना link भेजें...</i>"
-        )
-
-    else:
-
-        text = (
-
-            "▶️ <b>YOUTUBE EXTRACTOR</b>\n"
-
-            "━━━━━━━━━━━━━━━━━━\n\n"
-
-            "🔗 <b>YouTube Video / Short का "
-            "link भेजें।</b>\n\n"
-
-            "✨ Title, Description और Hashtags "
-            "निकालने की कोशिश की जाएगी।\n\n"
-
-            "🚀 <i>अब अपना link भेजें...</i>"
-        )
-
-    send_message(
-
-        chat_id,
-
-        text,
-
-        back_keyboard()
+        "<i>अब अपना link भेजें...</i>"
     )
 
 
 # =========================================================
-# UPDATE
+# YOUTUBE INFO
+# =========================================================
+
+def youtube_text():
+
+    return (
+
+        "<b>YOUTUBE EXTRACTOR</b>\n"
+
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "<b>YouTube Video / Short का "
+        "link भेजें।</b>\n\n"
+
+        "Title, Description और Tags "
+        "निकालने की कोशिश की जाएगी।\n\n"
+
+        "<i>अब अपना link भेजें...</i>"
+    )
+
+
+# =========================================================
+# UPDATE PROCESSOR
 # =========================================================
 
 def process_update(update):
@@ -1430,14 +1443,12 @@ def process_update(update):
     try:
 
         # =================================================
-        # MESSAGE
+        # NORMAL MESSAGE
         # =================================================
 
         if "message" in update:
 
-            message = update[
-                "message"
-            ]
+            message = update["message"]
 
             chat = message.get(
                 "chat",
@@ -1453,10 +1464,19 @@ def process_update(update):
                 ""
             )
 
+
             if not chat_id:
                 return
 
-            text = clean(text)
+
+            text = clean(
+                text
+            )
+
+
+            # ---------------------------------------------
+            # START
+            # ---------------------------------------------
 
             if text.startswith(
                 "/start"
@@ -1468,6 +1488,11 @@ def process_update(update):
 
                 return
 
+
+            # ---------------------------------------------
+            # HELP
+            # ---------------------------------------------
+
             if text.startswith(
                 "/help"
             ):
@@ -1478,9 +1503,15 @@ def process_update(update):
 
                 return
 
+
+            # ---------------------------------------------
+            # URL
+            # ---------------------------------------------
+
             platform = detect_platform(
                 text
             )
+
 
             if platform:
 
@@ -1499,11 +1530,16 @@ def process_update(update):
 
                 return
 
-            send_message(
+
+            # ---------------------------------------------
+            # INVALID TEXT
+            # ---------------------------------------------
+
+            edit_or_send(
 
                 chat_id,
 
-                "❌ <b>Invalid Link</b>\n\n"
+                "<b>Invalid Link</b>\n\n"
 
                 "Please send a public "
                 "Instagram or YouTube link.",
@@ -1513,8 +1549,9 @@ def process_update(update):
 
             return
 
+
         # =================================================
-        # CALLBACK
+        # CALLBACK QUERY
         # =================================================
 
         if "callback_query" in update:
@@ -1549,53 +1586,111 @@ def process_update(update):
                 "message_id"
             )
 
+
             answer_callback(
                 callback_id
             )
 
-            # HOME
+
+            # ---------------------------------------------
+            # SAVE CURRENT MESSAGE
+            # ---------------------------------------------
+
+            if chat_id and message_id:
+
+                set_last_bot_message(
+
+                    chat_id,
+
+                    message_id
+                )
+
+
+            # ---------------------------------------------
+            # HOME / BACK
+            # ---------------------------------------------
+
             if data == "home":
 
-                send_start(
-                    chat_id
+                edit_message(
+
+                    chat_id,
+
+                    message_id,
+
+                    welcome_text(),
+
+                    home_keyboard()
                 )
 
                 return
 
+
+            # ---------------------------------------------
             # INSTAGRAM
+            # ---------------------------------------------
+
             if data == "instagram":
 
-                send_platform_info(
+                edit_message(
+
                     chat_id,
-                    "instagram"
+
+                    message_id,
+
+                    instagram_text(),
+
+                    back_keyboard()
                 )
 
                 return
 
+
+            # ---------------------------------------------
             # YOUTUBE
+            # ---------------------------------------------
+
             if data == "youtube":
 
-                send_platform_info(
+                edit_message(
+
                     chat_id,
-                    "youtube"
+
+                    message_id,
+
+                    youtube_text(),
+
+                    back_keyboard()
                 )
 
                 return
 
+
+            # ---------------------------------------------
             # HELP
+            # ---------------------------------------------
+
             if data == "help":
 
-                send_help(
-                    chat_id
+                edit_message(
+
+                    chat_id,
+
+                    message_id,
+
+                    help_text(),
+
+                    back_keyboard()
                 )
 
                 return
+
 
     except Exception as e:
 
         print(
-            "UPDATE ERROR:",
-            repr(e)
+            "Update processing error:",
+            e
         )
 
 
@@ -1612,6 +1707,7 @@ def webhook():
         silent=True
     )
 
+
     if update:
 
         threading.Thread(
@@ -1624,6 +1720,7 @@ def webhook():
 
         ).start()
 
+
     return jsonify({
         "ok": True
     })
@@ -1633,7 +1730,9 @@ def webhook():
 # HEALTH
 # =========================================================
 
-@app.get("/health")
+@app.get(
+    "/health"
+)
 def health():
 
     return jsonify({
@@ -1642,7 +1741,7 @@ def health():
 
 
 # =========================================================
-# HOME
+# HOME URL
 # =========================================================
 
 @app.get("/")
@@ -1652,7 +1751,7 @@ def home():
 
 
 # =========================================================
-# WEBHOOK SETUP
+# SET WEBHOOK
 # =========================================================
 
 def setup_webhook():
@@ -1665,18 +1764,24 @@ def setup_webhook():
 
         return
 
+
     if not BASE_URL:
 
         print(
+
             "ERROR: WEBHOOK_URL / "
             "RENDER_EXTERNAL_URL is missing."
         )
 
         return
 
+
     webhook_url = (
-        f"{BASE_URL}/telegram/webhook"
+
+        f"{BASE_URL}"
+        f"/telegram/webhook"
     )
+
 
     result = telegram(
 
@@ -1691,12 +1796,17 @@ def setup_webhook():
         }
     )
 
+
     print(
         "Webhook:",
         result
     )
 
-    # Commands
+
+    # =====================================================
+    # BOT COMMANDS
+    # =====================================================
+
     telegram(
 
         "setMyCommands",
@@ -1719,9 +1829,11 @@ def setup_webhook():
                     "description":
                         "How to use the bot"
                 }
+
             ]
         }
     )
+
 
     print(
         "VICKYSTOR Bot started successfully."
@@ -1742,14 +1854,16 @@ if BOT_TOKEN:
 
         print(
             "Webhook setup error:",
-            repr(e)
+            e
         )
 
 else:
 
     print(
+
         "BOT_TOKEN not found. "
-        "Add BOT_TOKEN in Render Environment Variables."
+        "Add BOT_TOKEN in Render "
+        "Environment Variables."
     )
 
 
