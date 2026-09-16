@@ -1,9 +1,11 @@
 import asyncio
+import os
 import sqlite3
 import random
 import logging
 import time
 import aiohttp
+from aiohttp import web
 import hmac
 import hashlib
 import urllib.parse
@@ -23,7 +25,9 @@ from aiogram.types import (
 # ==============================================================================
 # 1. BOT CONFIGURATION & CONSTANTS
 # ==============================================================================
-BOT_TOKEN = "8880156406:AAGlRbfcXYK_KnLdcIWQ6parnQRB772b_Io"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN environment variable is not set. Add BOT_TOKEN in Render Environment Variables.")
 BOT_USERNAME = "@Vickystor_bot"
 ADMIN_ID = 8700582148
 ADMIN_CONTACT = "@VICKYXMOD"
@@ -2480,19 +2484,77 @@ async def setup_binance_address(m: Message, state: FSMContext):
 # ==============================================================================
 # 22. BOOTSTRAPPING & MAIN
 # ==============================================================================
+# Render Web Services require an HTTP listener on 0.0.0.0:$PORT.
+# Telegram continues to use long polling; these endpoints are only for Render.
+WEB_PORT = int(os.getenv("PORT", "10000"))
+_web_runner = None
+
+
+async def health_handler(request: web.Request) -> web.Response:
+    return web.Response(text="OK", status=200)
+
+
+async def root_handler(request: web.Request) -> web.Response:
+    return web.Response(text="VICKYSTOR bot is running", status=200)
+
+
+async def start_health_server() -> None:
+    global _web_runner
+
+    app = web.Application()
+    app.router.add_get("/", root_handler)
+    app.router.add_get("/health", health_handler)
+    app.router.add_get("/healthz", health_handler)
+
+    _web_runner = web.AppRunner(app)
+    await _web_runner.setup()
+    site = web.TCPSite(_web_runner, "0.0.0.0", WEB_PORT)
+    await site.start()
+    logger.info("Render health server listening on 0.0.0.0:%s", WEB_PORT)
+
+
+async def stop_health_server() -> None:
+    global _web_runner
+    if _web_runner is not None:
+        await _web_runner.cleanup()
+        _web_runner = None
+
+
+async def run_polling_forever() -> None:
+    """Restart Telegram polling after transient failures or unexpected stops."""
+    retry_delay = 5
+
+    while True:
+        try:
+            logger.info("Starting Telegram polling...")
+            await dp.start_polling(bot)
+            logger.warning("Telegram polling stopped. Restarting in %s seconds...", retry_delay)
+        except asyncio.CancelledError:
+            logger.info("Polling task cancelled; shutting down.")
+            raise
+        except Exception:
+            logger.exception("Telegram polling crashed. Restarting in %s seconds...", retry_delay)
+
+        await asyncio.sleep(retry_delay)
+
+
 async def main() -> None:
     init_db()
     logger.info("Initializing DB structure...")
     migrate_categories()
+
+    await start_health_server()
     asyncio.create_task(auto_verify_task())
+
     logger.info("ZapUPI Auto-Verifier Daemon Running in Background.")
     logger.info("🚀 CORE SYSTEM IS FULLY OPERATIONAL...")
+
     try:
-        await dp.start_polling(bot)
-    except Exception as err:
-        logger.error(f"Critical System Failure in Polling: {err}")
+        await run_polling_forever()
     finally:
+        await stop_health_server()
         await bot.session.close()
+
 
 if __name__ == "__main__":
     try:
