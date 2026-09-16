@@ -1,0 +1,6 @@
+services:
+  - type: worker
+    name: vickystor-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main_fixed.py
