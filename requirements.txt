@@ -1,4 +1,2 @@
-flask
-requests
-yt-dlp
-gunicorn
+aiogram==3.22.0
+aiohttp==3.12.15
