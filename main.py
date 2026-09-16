@@ -52,20 +52,20 @@ FIXED_CATEGORIES = [
 # ==============================================================================
 DEFAULT_EMOJIS = {
     'product_store': '6163205892834598715',          # already premium
-    'profile': '6161068493769810928',                # new premium
-    'add_balance': '5429651785352501917',            # new premium
-    'history': '6032594876506312598',                # new premium
-    'referral': '5350452584119279096',               # new premium
-    'support': '6210671723906342799',                # new premium
-    'ludo_spin': '5382194935057372936',              # new premium
+    'profile': '6091248818211265593',                # new premium
+    'add_balance': '6091231303334633875',            # new premium
+    'history': '6176966310920983412',                # new premium
+    'referral': '6267115986541877538',               # new premium
+    'support': '6147796340450533061',                # new premium
+    'ludo_spin': '6091150429100447967',              # new premium
     'back': '5409357944619802453',                   # new premium
-    'upi': '6161041877857475666',                    # new premium
-    'binance': '6161089551994462716',                # new premium
-    'reseller': '5447410659077661506',               # new premium
-    'tutorial': '5260293700088511294',               # new premium
+    'upi': '5807750375033278838',                    # new premium
+    'binance': '5843689746538173057',                # new premium
+    'reseller': '6091232896767500693',               # new premium
+    'tutorial': '6089104521428997572',               # new premium
     'download': '6161336001512874965',               # already premium
     'telegram': '5456140674028019486',               # new premium
-    'whatsapp': '5251203410396458957',               # new premium
+    'whatsapp': '6147657634481707847',               # new premium
     'welcome': '5397782960512444700',                # new premium
     'vip': '5206607081334906820',                    # new premium
     'category_android_non_root': '6161172706856282588',
