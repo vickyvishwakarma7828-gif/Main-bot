@@ -424,13 +424,15 @@ def init_db() -> None:
         ('bot_status', 'ON'),
         ('how_to_video', 'None'),
         ('all_files_link', 'None'),
-        ('zapupi_api', ''),
+        ('fampay_upi_id', 'mamtaxmodeofc@fam'),
+        ('fampay_api_key', 'fam_14d9dd2c308c67671fa6318ca578671d4a2de8a8'),
+        ('fampay_emoji', '5807750375033278838'),
         ('binance_api', ''),
         ('binance_secret', ''),
         ('binance_address', ''),
         ('vip_status', 'OFF'),
-        ('reseller_setup_fee', '200.0'),
-        ('reseller_min_balance', '500.0'),
+        ('reseller_setup_fee', '300.0'),
+        ('reseller_min_balance', '300.0'),
         ('migration_done', '0'),
         ('support_telegram', 'https://t.me/YourSupport'),
         ('support_whatsapp', 'https://wa.me/YourNumber'),
@@ -562,6 +564,7 @@ class UserStates(StatesGroup):
     wait_for_redeem = State()
     wait_for_crypto_txid = State()
     custom_amount_input = State()
+    wait_for_fampay_utr = State()
 
 class AdminStates(StatesGroup):
     add_prod_category = State()
@@ -584,7 +587,9 @@ class AdminStates(StatesGroup):
     add_coupon_amount = State()
     add_coupon_uses = State()
     
-    wait_for_zapupi_api = State()
+    wait_for_fampay_upi = State()
+    wait_for_fampay_api = State()
+    wait_for_fampay_emoji = State()
     wait_for_binance_api = State()
     wait_for_binance_secret = State()
     wait_for_binance_address = State()
@@ -769,7 +774,7 @@ def admin_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🎨 Edit All Emojis", callback_data="admin_edit_emojis", style="success")
         ],
         [
-            InlineKeyboardButton(text="⚙️ ZapUPI Setup", callback_data="admin_setup_zapupi", style="success"),
+            InlineKeyboardButton(text="💳 FAM PAY Setup", callback_data="admin_setup_fampay", icon_custom_emoji_id=get_setting("fampay_emoji", DEFAULT_EMOJIS.get("upi", "")), style="success"),
             InlineKeyboardButton(text="🪙 Binance Setup", callback_data="admin_setup_binance", style="success")
         ],
         [
@@ -816,7 +821,7 @@ def admin_back_kb() -> InlineKeyboardMarkup:
 # ==============================================================================
 # 8. NOTIFICATIONS
 # ==============================================================================
-async def send_advanced_notification(user_id: int, notif_type: str, amount: float, product: str = None, key: str = None, gateway: str = "ZapUPI") -> None:
+async def send_advanced_notification(user_id: int, notif_type: str, amount: float, product: str = None, key: str = None, gateway: str = "FAM PAY") -> None:
     user_info = db_query("SELECT first_name, phone, username, is_reseller, is_vip FROM users WHERE user_id=?", (user_id,), fetchone=True)
     
     name = user_info[0] if user_info else "Unknown"
@@ -846,124 +851,122 @@ async def send_advanced_notification(user_id: int, notif_type: str, amount: floa
 # ==============================================================================
 # 9. PAYMENT VERIFIER
 # ==============================================================================
+async def _credit_fampay_transaction(order_id: str, expected_user_id: int, txn_amount: float, status_data: dict) -> bool:
+    """Credit a verified FamGateway payment exactly once."""
+    paid_amount = status_data.get("amount")
+    try:
+        if paid_amount is not None and abs(float(paid_amount) - float(txn_amount)) > 0.01:
+            logger.warning("FamGateway amount mismatch for %s: expected=%s got=%s", order_id, txn_amount, paid_amount)
+            return False
+    except (TypeError, ValueError):
+        return False
+
+    # Atomic-ish guard: only pending transactions can be credited.
+    db_query("UPDATE transactions SET status='paid' WHERE order_id=? AND status='pending'", (order_id,))
+    check = db_query("SELECT status FROM transactions WHERE order_id=?", (order_id,), fetchone=True)
+    if not check or check[0] != 'paid':
+        return False
+    # The status may already have been paid by another verifier.
+    # Use a separate marker to avoid double credit.
+    marker_key = f"fampay_credited_{order_id}"
+    if get_setting(marker_key, "") == "1":
+        return True
+    set_setting(marker_key, "1")
+    db_query("UPDATE users SET balance = balance + ? WHERE user_id=?", (txn_amount, expected_user_id))
+    utr = status_data.get("utr", "N/A")
+    try:
+        await bot.send_message(expected_user_id, f"🎉 <b>FAM PAY PAYMENT VERIFIED!</b>\n\n✅ {fmt_curr(txn_amount)} has been added to your wallet.\n🔐 UTR: <code>{utr}</code>", reply_markup=main_menu_kb(expected_user_id), parse_mode='HTML')
+    except Exception:
+        pass
+    await send_advanced_notification(expected_user_id, "DEPOSIT", txn_amount, product=order_id, gateway="FAM PAY Auto")
+    log_activity(expected_user_id, "DEPOSIT_AUTO_SUCCESS", f"Amount: {txn_amount}, Gateway: FAM PAY Auto, Order: {order_id}, UTR: {utr}")
+    return True
+
+
 async def run_payment_verification(user_id: int, order_id: str, reply_target: Any) -> None:
-    txn = db_query("SELECT amount_inr, status, timestamp FROM transactions WHERE order_id=?", (order_id,), fetchone=True)
+    txn = db_query("SELECT amount_inr, status, timestamp FROM transactions WHERE order_id=? AND user_id=?", (order_id, user_id), fetchone=True)
     if not txn:
-        err = "❌ Invalid or Fake Order ID detected in system!"
-        if isinstance(reply_target, CallbackQuery): await reply_target.answer(err, show_alert=True)
-        else: await reply_target.answer(err)
+        msg = "❌ Invalid Order ID."
+        if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
+        else: await reply_target.answer(msg)
         return
-        
-    if time.time() - txn[2] > 900 and txn[1] == 'pending':
-        db_query("UPDATE transactions SET status='expired' WHERE order_id=?", (order_id,))
-        err_msg = "⏳ <b>Payment Timed Out!</b>\nThe 15-minute verification window has expired."
-        if isinstance(reply_target, CallbackQuery): await reply_target.message.edit_text(err_msg, reply_markup=back_kb(), parse_mode='HTML')
-        else: await reply_target.answer(err_msg, reply_markup=back_kb())
+    if txn[1] == 'paid':
+        msg = "✅ This payment has already been credited to your wallet."
+        if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
+        else: await reply_target.answer(msg)
+        return
+    if time.time() - txn[2] > 600:
+        db_query("UPDATE transactions SET status='expired' WHERE order_id=? AND status='pending'", (order_id,))
+        msg = "⏳ <b>Payment request expired.</b> Please create a new deposit request."
+        if isinstance(reply_target, CallbackQuery): await reply_target.message.edit_text(msg, reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
+        else: await reply_target.answer(msg, reply_markup=back_kb("gateway_inr"))
         return
 
-    if txn[1] == 'paid':
-        msg = "✅ This payment has already been securely credited to your wallet."
+    api_key = get_setting("fampay_api_key", "").strip()
+    if not api_key:
+        msg = "⚠️ FAM PAY API Key is not configured. Admin → FAM PAY Setup."
         if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
         else: await reply_target.answer(msg)
         return
-    elif txn[1] == 'expired':
-        msg = "❌ This order has expired. Please create a new deposit request."
-        if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
-        else: await reply_target.answer(msg)
-        return
-        
-    api_key_check = db_query("SELECT value FROM settings WHERE key='zapupi_api'", fetchone=True)
-    if not api_key_check:
-        msg = "⚠️ Gateway API key missing. Administrator needs to configure it."
-        if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
-        else: await reply_target.answer(msg)
-        return
-        
-    api_key = api_key_check[0]
-    url = "https://pay.zapupi.com/api/order-status"
-    payload = {"zap_key": api_key, "order_id": order_id}
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, json=payload) as resp:
-                if resp.status == 200:
-                    try: res_json = await resp.json(content_type=None)
-                    except Exception: res_json = {}
-                        
-                    if res_json.get("status") == "success":
-                        txn_data = res_json.get("data", {})
-                        real_status = txn_data.get("status", "Pending")
-                        
-                        if real_status == "Success":
-                            db_query("UPDATE transactions SET status='paid' WHERE order_id=?", (order_id,))
-                            db_query("UPDATE users SET balance = balance + ? WHERE user_id=?", (txn[0], user_id))
-                            
-                            success_msg = f"🎉 <b>VERIFICATION SUCCESSFUL!</b>\n\n✅ {fmt_curr(txn[0])} has been added to your wallet securely."
-                            if isinstance(reply_target, CallbackQuery): await reply_target.message.edit_text(success_msg, reply_markup=back_kb(), parse_mode='HTML')
-                            else: await reply_target.answer(success_msg, reply_markup=back_kb())
-                            
-                            await send_advanced_notification(user_id, "DEPOSIT", txn[0], product=order_id, gateway="ZapUPI")
-                            log_activity(user_id, "DEPOSIT_SUCCESS", f"Amount: {txn[0]}, Gateway: ZapUPI, Order: {order_id}")
-                            
-                        elif real_status == "Pending":
-                            fail_msg = "⏳ Payment is still Pending at the gateway. Please wait a minute and try clicking manual verify again."
-                            if isinstance(reply_target, CallbackQuery): await reply_target.answer(fail_msg, show_alert=True)
-                            else: await reply_target.answer(fail_msg)
-                        else:
-                            fail_msg = f"❌ Payment Failed or Cancelled (Gateway Status: {real_status})."
-                            if isinstance(reply_target, CallbackQuery): await reply_target.answer(fail_msg, show_alert=True)
-                            else: await reply_target.answer(fail_msg)
-                    else:
-                        err = f"⚠️ Gateway Error: {res_json.get('message', 'Unknown Error')}"
-                        if isinstance(reply_target, CallbackQuery): await reply_target.answer(err, show_alert=True)
-                        else: await reply_target.answer(err)
+
+    url = "https://famgateway.in/api/verify-order.php"
+    headers = {"X-Api-Key": api_key, "Accept": "application/json"}
+    params = {"order_id": order_id}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params, timeout=15) as resp:
+                data = await resp.json(content_type=None)
+                status = str(data.get("status", "")).lower()
+                status_data = data.get("data", {}) or {}
+                if status == "success":
+                    if await _credit_fampay_transaction(order_id, user_id, float(txn[0]), status_data):
+                        if isinstance(reply_target, CallbackQuery):
+                            await reply_target.message.edit_text("🎉 <b>PAYMENT VERIFIED!</b>\n\nYour FAM PAY payment was confirmed and your balance has been credited.", reply_markup=back_kb(), parse_mode='HTML')
+                    return
+                if status == "expired":
+                    db_query("UPDATE transactions SET status='expired' WHERE order_id=? AND status='pending'", (order_id,))
+                    msg = "⏳ FAM PAY payment link has expired. Please create a new deposit."
+                elif status == "pending":
+                    msg = "⏳ Payment is still pending. Auto verification is checking it in the background."
                 else:
-                    err = f"⚠️ Gateway HTTP Error: {resp.status}. Gateway might be down."
-                    if isinstance(reply_target, CallbackQuery): await reply_target.answer(err, show_alert=True)
-                    else: await reply_target.answer(err)
-        except Exception as e:
-            logger.error(f"ZapUPI API Error: {str(e)}")
-            err = f"⚠️ Unable to connect to Gateway API: Network Issue."
-            if isinstance(reply_target, CallbackQuery): await reply_target.answer(err, show_alert=True)
-            else: await reply_target.answer(err)
+                    msg = f"⚠️ FAM PAY verification response: {data.get('message', status or 'unknown')}"
+                if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
+                else: await reply_target.answer(msg)
+    except Exception as e:
+        logger.error(f"FamGateway verification error: {e}")
+        msg = "⚠️ Could not connect to FAM PAY verification server. Please try again."
+        if isinstance(reply_target, CallbackQuery): await reply_target.answer(msg, show_alert=True)
+        else: await reply_target.answer(msg)
+
 
 async def auto_verify_task() -> None:
+    """Poll FamGateway every 5 seconds and credit successful payments automatically."""
     while True:
-        await asyncio.sleep(15) 
-        api_key_check = db_query("SELECT value FROM settings WHERE key='zapupi_api'", fetchone=True)
-        if not api_key_check or not api_key_check[0]: continue
-            
-        api_key = api_key_check[0]
-        pending_txns = db_query("SELECT order_id, user_id, amount_inr, timestamp FROM transactions WHERE status='pending'", fetchall=True)
-        if not pending_txns: continue
-
-        for txn in pending_txns:
-            order_id, user_id, amount, ts = txn
-            if time.time() - ts > 900:
-                db_query("UPDATE transactions SET status='expired' WHERE order_id=?", (order_id,))
-                try: await bot.send_message(user_id, f"⏳ <b>Order Expired!</b>\nYour payment window for order <code>{order_id}</code> has timed out.", parse_mode='HTML')
-                except: pass
-                continue
-
-            url = "https://pay.zapupi.com/api/order-status"
-            payload = {"zap_key": api_key, "order_id": order_id}
-            async with aiohttp.ClientSession() as session:
+        await asyncio.sleep(5)
+        api_key = get_setting("fampay_api_key", "").strip()
+        if not api_key:
+            continue
+        pending_txns = db_query("SELECT order_id, user_id, amount_inr, timestamp FROM transactions WHERE status='pending'", fetchall=True) or []
+        if not pending_txns:
+            continue
+        headers = {"X-Api-Key": api_key, "Accept": "application/json"}
+        async with aiohttp.ClientSession() as session:
+            for order_id, user_id, amount, ts in pending_txns:
+                if time.time() - ts > 600:
+                    db_query("UPDATE transactions SET status='expired' WHERE order_id=? AND status='pending'", (order_id,))
+                    try: await bot.send_message(user_id, f"⏳ <b>FAM PAY order expired</b>\nOrder <code>{order_id}</code> expired without payment.", parse_mode='HTML')
+                    except Exception: pass
+                    continue
                 try:
-                    async with session.post(url, json=payload) as resp:
-                        if resp.status == 200:
-                            try: res_json = await resp.json(content_type=None)
-                            except Exception: res_json = {}
-                            if res_json.get("status") == "success":
-                                real_status = res_json.get("data", {}).get("status", "")
-                                if real_status == "Success":
-                                    db_query("UPDATE transactions SET status='paid' WHERE order_id=?", (order_id,))
-                                    db_query("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
-                                    try: await bot.send_message(user_id, f"✨ <b>AUTO-VERIFIED!</b>\n\n✅ Your payment was detected successfully. {fmt_curr(amount)} has been added to your balance!", parse_mode='HTML')
-                                    except: pass
-                                    await send_advanced_notification(user_id, "DEPOSIT", amount, product=order_id, gateway="ZapUPI Auto")
-                                    log_activity(user_id, "DEPOSIT_AUTO_SUCCESS", f"Amount: {amount}, Gateway: ZapUPI Auto, Order: {order_id}")
-                except Exception as e: 
-                    logger.debug(f"Auto-verify minor exception ignored: {e}")
+                    async with session.get("https://famgateway.in/api/verify-order.php", headers=headers, params={"order_id": order_id}, timeout=12) as resp:
+                        data = await resp.json(content_type=None)
+                        if str(data.get("status", "")).lower() == "success":
+                            await _credit_fampay_transaction(order_id, user_id, float(amount), data.get("data", {}) or {})
+                        elif str(data.get("status", "")).lower() == "expired":
+                            db_query("UPDATE transactions SET status='expired' WHERE order_id=? AND status='pending'", (order_id,))
+                except Exception as e:
+                    logger.debug(f"FamGateway auto-verify exception for {order_id}: {e}")
+
 
 # ==============================================================================
 # 10. ONBOARDING & START
@@ -1037,7 +1040,7 @@ async def select_gateway_menu(call: CallbackQuery):
     text = get_ui_text("add_balance_menu")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="UPI PAY", callback_data="gateway_inr", icon_custom_emoji_id=get_emoji_icon("upi"), style="primary"),
+            InlineKeyboardButton(text="FAM PAY", callback_data="gateway_inr", icon_custom_emoji_id=get_setting("fampay_emoji", DEFAULT_EMOJIS.get("upi", "")), style="primary"),
             InlineKeyboardButton(text="BINANCE PAY", callback_data="gateway_crypto", icon_custom_emoji_id=get_emoji_icon("binance"), style="primary")
         ],
         [
@@ -1051,7 +1054,10 @@ async def select_gateway_menu(call: CallbackQuery):
 # ==============================================================================
 @dp.callback_query(F.data == "gateway_inr")
 async def add_balance_inr(call: CallbackQuery):
-    text = f"💵 <b>— ZAPUPI DEPOSIT —</b> 💵\n\nSelect amount to deposit:"
+    upi_id = get_setting("fampay_upi_id", "").strip()
+    if not upi_id:
+        return await call.message.edit_text("⚠️ <b>FAM PAY is not configured.</b>\nAdmin needs to set the FAM PAY UPI ID first.", reply_markup=back_kb("menu_add_balance"), parse_mode='HTML')
+    text = f"💳 <b>— FAM PAY DEPOSIT —</b> 💳\n\nSelect amount to deposit:"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="₹50", callback_data="pay_50", style="primary"), InlineKeyboardButton(text="₹100", callback_data="pay_100", style="primary")],
         [InlineKeyboardButton(text="₹200", callback_data="pay_200", style="primary"), InlineKeyboardButton(text="₹500", callback_data="pay_500", style="primary")],
@@ -1084,75 +1090,74 @@ async def keypad_handler(call: CallbackQuery, state: FSMContext):
     amount_str = data.get("amount_str", "0")
     action = call.data.split("_")[1]
     if action == "confirm":
-        if amount_str == "0":
-            await call.answer("Amount cannot be zero.", show_alert=True)
-            return
+        if amount_str == "0": return await call.answer("Amount cannot be zero.", show_alert=True)
         try:
             amount = float(amount_str)
-            if amount < 10:
-                await call.answer("Minimum deposit is ₹10.", show_alert=True)
-                return
+            if amount < 10: return await call.answer("Minimum deposit is ₹10.", show_alert=True)
             await state.clear()
-            await call.message.edit_text("⏳ <b>Generating Secure Link...</b>", parse_mode='HTML')
-            await generate_zapupi_order(call.from_user.id, amount, call.message)
-        except ValueError:
-            await call.answer("Invalid amount.", show_alert=True)
+            await call.message.edit_text("⏳ <b>Creating FAM PAY payment request...</b>", parse_mode='HTML')
+            await create_fampay_order(call.from_user.id, amount, call.message)
+        except ValueError: await call.answer("Invalid amount.", show_alert=True)
         return
-    if action == "backspace":
-        if len(amount_str) > 1: amount_str = amount_str[:-1]
-        else: amount_str = "0"
-    elif action == "clear":
-        amount_str = "0"
+    if action == "backspace": amount_str = amount_str[:-1] if len(amount_str) > 1 else "0"
+    elif action == "clear": amount_str = "0"
     else:
-        if amount_str == "0": amount_str = action
-        else: amount_str += action
-        if len(amount_str) > 6: amount_str = amount_str[:6]
+        amount_str = action if amount_str == "0" else amount_str + action
+        amount_str = amount_str[:6]
     await state.update_data(amount_str=amount_str)
     await show_keypad(call.message, amount_str)
     await call.answer()
 
 @dp.callback_query(F.data.startswith("pay_"))
-async def process_zapupi_payment_callback(call: CallbackQuery):
+async def process_fampay_payment_callback(call: CallbackQuery):
     inr_amount = float(call.data.split("_")[1])
-    await call.message.edit_text("⏳ <b>Generating Secure Link via ZapUPI...</b>", parse_mode='HTML')
-    await generate_zapupi_order(call.from_user.id, inr_amount, call.message)
+    await call.message.edit_text("⏳ <b>Creating FAM PAY payment request...</b>", parse_mode='HTML')
+    await create_fampay_order(call.from_user.id, inr_amount, call.message)
 
-async def generate_zapupi_order(user_id: int, inr_amount: float, message_obj: Message) -> None:
-    api_key_check = db_query("SELECT value FROM settings WHERE key='zapupi_api'", fetchone=True)
-    if not api_key_check or not api_key_check[0]:
-        return await message_obj.edit_text("⚠️ ZapUPI Gateway is currently offline. Admin needs to set API Key.", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
-        
-    api_key = api_key_check[0]
+async def create_fampay_order(user_id: int, inr_amount: float, message_obj: Message) -> None:
+    api_key = get_setting("fampay_api_key", "").strip()
+    if not api_key:
+        return await message_obj.edit_text("⚠️ FAM PAY API is not configured. Admin → FAM PAY Setup → API Key.", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
     current_time = int(time.time())
-    order_id = f"NXT{user_id}{current_time}"
-    user_phone = db_query("SELECT phone FROM users WHERE user_id=?", (user_id,), fetchone=True)
-    mobile = user_phone[0] if user_phone and user_phone[0] else "9999999999"
-    bot_deep_link = f"https://t.me/{BOT_USERNAME}?start=v_{order_id}"
-    
+    order_id = f"FAM{user_id}{current_time}"
+    user = db_query("SELECT first_name, phone FROM users WHERE user_id=?", (user_id,), fetchone=True)
+    customer_name = user[0] if user and user[0] else str(user_id)
+    mobile = user[1] if user and user[1] else ""
     db_query("INSERT INTO transactions (order_id, user_id, amount_inr, status, timestamp) VALUES (?, ?, ?, 'pending', ?)", (order_id, user_id, inr_amount, current_time))
-    payment_url = ""
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            url = "https://pay.zapupi.com/api/create-order"
-            payload = {"zap_key": api_key, "order_id": order_id, "amount": str(inr_amount), "customer_mobile": mobile, "remark": "Wallet Topup", "success_url": bot_deep_link, "failed_url": f"https://t.me/{BOT_USERNAME}", "timeout_url": f"https://t.me/{BOT_USERNAME}", "webhook_url": f"https://t.me/{BOT_USERNAME}"}
-            async with session.post(url, json=payload) as resp:
-                if resp.status == 200:
-                    try: res_data = await resp.json(content_type=None)
-                    except: res_data = {}
-                    if res_data.get("status") == "success": payment_url = res_data.get("payment_url")
-                    else: return await message_obj.edit_text(f"❌ <b>Gateway Data Error:</b> {res_data.get('message', 'Unknown structure.')}", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
-                else: return await message_obj.edit_text(f"❌ <b>Gateway Server Error:</b> HTTP {resp.status}", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
-        except Exception as e:
-            return await message_obj.edit_text(f"❌ <b>API Connection Error:</b> {str(e)}", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
+
+    payload = {
+        "amount": round(float(inr_amount), 2),
+        "customer_name": customer_name,
+        "customer_phone": mobile,
+        "redirect_url": f"https://t.me/{BOT_USERNAME}?start=v_{order_id}"
+    }
+    headers = {"Content-Type": "application/json", "X-Api-Key": api_key, "Accept": "application/json"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://famgateway.in/api/create-order", json=payload, headers=headers, timeout=20) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status != 200 or str(data.get("status", "")).lower() != "success":
+                    db_query("UPDATE transactions SET status='failed' WHERE order_id=?", (order_id,))
+                    return await message_obj.edit_text(f"❌ <b>FAM PAY Error:</b> {data.get('message', f'HTTP {resp.status}')}", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
+                info = data.get("data", {}) or {}
+                payment_url = info.get("checkout_url") or info.get("payment_url") or info.get("upi_intent")
+                gateway_order_id = info.get("order_id")
+                if gateway_order_id and gateway_order_id != order_id:
+                    db_query("UPDATE transactions SET order_id=? WHERE order_id=?", (gateway_order_id, order_id))
+                    order_id = gateway_order_id
+                if not payment_url:
+                    return await message_obj.edit_text("❌ FAM PAY did not return a payment URL.", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
+    except Exception as e:
+        db_query("UPDATE transactions SET status='failed' WHERE order_id=?", (order_id,))
+        return await message_obj.edit_text(f"❌ <b>FAM PAY connection error:</b> {e}", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Pay Now (Auto Redirects)", url=payment_url, style="success")],
-        [InlineKeyboardButton(text="🔄 Manual Verify", callback_data=f"verify_{order_id}", style="primary")],
-        [InlineKeyboardButton(text="Cancel Transaction", callback_data="menu_add_balance", icon_custom_emoji_id=get_emoji_icon("back"), style="danger")]
+        [InlineKeyboardButton(text="💳 Pay via FAM PAY", url=payment_url, icon_custom_emoji_id=get_setting("fampay_emoji", DEFAULT_EMOJIS.get("upi", "")), style="success")],
+        [InlineKeyboardButton(text="🔄 Check Payment", callback_data=f"verify_{order_id}", style="primary")],
+        [InlineKeyboardButton(text="❌ Cancel", callback_data="menu_add_balance", icon_custom_emoji_id=get_emoji_icon("back"), style="danger")]
     ])
-    text = (f"🧾 <b>SECURE INVOICE CREATED</b>\n\nAmount: <b>₹{inr_amount:.2f}</b>\nOrder ID: <code>{order_id}</code>\n⏳ <b>Timer:</b> 15:00 Minutes\n\n1️⃣ Click <b>Pay Now</b> to open UPI Gateway.\n2️⃣ Complete the payment in your app.\n3️⃣ <b>Auto-Verify:</b> Return to the bot after payment! ✨")
-    log_activity(user_id, "GENERATE_INVOICE", f"Amount: {inr_amount}, Order ID: {order_id}")
+    text = (f"🧾 <b>FAM PAY PAYMENT CREATED</b>\n\n💰 Amount: <b>₹{inr_amount:.2f}</b>\n🆔 Order ID: <code>{order_id}</code>\n\n1️⃣ Tap <b>Pay via FAM PAY</b>.\n2️⃣ Complete payment.\n3️⃣ Balance is <b>auto-verified</b> in the background.\n\n⏳ Payment session is time-limited.")
+    log_activity(user_id, "GENERATE_FAMPAY_INVOICE", f"Amount: {inr_amount}, Order ID: {order_id}")
     await message_obj.edit_text(text, reply_markup=kb, parse_mode='HTML')
 
 @dp.callback_query(F.data.startswith("verify_"))
@@ -2439,20 +2444,50 @@ async def save_panel_emoji(m: Message, state: FSMContext):
         await m.answer(f"✅ Emoji set for panel '{panel_name}'!", reply_markup=admin_kb(), parse_mode='HTML')
     await state.clear()
 
-@dp.callback_query(F.data == "admin_setup_zapupi")
-async def setup_zapupi_start(call: CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "admin_setup_fampay")
+async def setup_fampay_start(call: CallbackQuery, state: FSMContext):
     if call.from_user.id != ADMIN_ID: return
-    await call.message.edit_text("⚙️ <b>ZAPUPI SECURITY DEPLOYMENT</b>\nInput master <b>API Key (zap_key)</b>:\n<i>(Type /cancel to abort sequence)</i>", reply_markup=admin_back_kb(), parse_mode='HTML')
-    await state.set_state(AdminStates.wait_for_zapupi_api)
+    current_key = get_setting("fampay_api_key", "")
+    masked = (current_key[:5] + "..." + current_key[-4:]) if len(current_key) > 10 else ("Set" if current_key else "Not set")
+    await call.message.edit_text(
+        f"💳 <b>FAM PAY AUTO GATEWAY SETUP</b>\n\n🔑 API Key: <code>{masked}</code>\n💳 UPI ID: <code>{get_setting('fampay_upi_id','Not set')}</code>\n🎨 Payment Emoji ID: <code>{get_setting('fampay_emoji', DEFAULT_EMOJIS.get('upi',''))}</code>\n\n<b>Step 1/3:</b> Send your FAM PAY / FamGateway API Key.\n<i>Type /cancel to abort.</i>",
+        reply_markup=admin_back_kb(), parse_mode='HTML'
+    )
+    await state.set_state(AdminStates.wait_for_fampay_api)
 
-@dp.message(AdminStates.wait_for_zapupi_api)
-async def zapupi_api(m: Message, state: FSMContext):
-    if m.text == '/cancel':
-        await state.clear()
-        return await m.answer("Sequence killed.", reply_markup=admin_kb(), parse_mode='HTML')
-    db_query("INSERT OR REPLACE INTO settings (key, value) VALUES ('zapupi_api', ?)", (m.text.strip(),))
-    await m.answer("✅ <b>Keys synchronized with ZapUPI backbone.</b>", reply_markup=admin_kb(), parse_mode='HTML')
+@dp.message(AdminStates.wait_for_fampay_api)
+async def fampay_api_save(m: Message, state: FSMContext):
+    if m.text.strip().lower() == '/cancel':
+        await state.clear(); return await m.answer("Setup cancelled.", reply_markup=admin_kb(), parse_mode='HTML')
+    key = m.text.strip()
+    if len(key) < 8:
+        return await m.answer("❌ API Key looks too short. Send the complete key.")
+    set_setting("fampay_api_key", key)
+    await m.answer("✅ API Key saved.\n\n<b>Step 2/3:</b> Send the FAM PAY UPI ID (example: yourname@fam).", reply_markup=admin_back_kb(), parse_mode='HTML')
+    await state.set_state(AdminStates.wait_for_fampay_upi)
+
+@dp.message(AdminStates.wait_for_fampay_upi)
+async def fampay_upi_save(m: Message, state: FSMContext):
+    if m.text.strip().lower() == '/cancel':
+        await state.clear(); return await m.answer("Setup cancelled.", reply_markup=admin_kb(), parse_mode='HTML')
+    upi_id = m.text.strip()
+    if len(upi_id) < 3 or " " in upi_id:
+        return await m.answer("❌ Invalid UPI ID. Send the correct FAM PAY UPI ID.")
+    set_setting("fampay_upi_id", upi_id)
+    await m.answer("✅ UPI ID saved.\n\n<b>Step 3/3:</b> Send the Telegram custom emoji ID for FAM PAY buttons.\nExample: <code>5807750375033278838</code>\nSend <code>skip</code> to keep the current/default emoji.", reply_markup=admin_back_kb(), parse_mode='HTML')
+    await state.set_state(AdminStates.wait_for_fampay_emoji)
+
+@dp.message(AdminStates.wait_for_fampay_emoji)
+async def fampay_emoji_save(m: Message, state: FSMContext):
+    if m.text.strip().lower() == '/cancel':
+        await state.clear(); return await m.answer("Setup cancelled.", reply_markup=admin_kb(), parse_mode='HTML')
+    value = m.text.strip()
+    if value.lower() != 'skip':
+        if not value.isdigit():
+            return await m.answer("❌ Emoji ID must contain only numbers, or send <code>skip</code>.", parse_mode='HTML')
+        set_setting("fampay_emoji", value)
     await state.clear()
+    await m.answer(f"✅ <b>FAM PAY AUTO SETUP COMPLETE</b>\n\n🔑 API Key: Saved\n💳 UPI ID: <code>{get_setting('fampay_upi_id','')}</code>\n🎨 Emoji ID: <code>{get_setting('fampay_emoji', DEFAULT_EMOJIS.get('upi',''))}</code>\n⚡ Auto verification: <b>ON</b>", reply_markup=admin_kb(), parse_mode='HTML')
 
 @dp.callback_query(F.data == "admin_setup_binance")
 async def setup_binance_start(call: CallbackQuery, state: FSMContext):
@@ -2546,7 +2581,7 @@ async def main() -> None:
     await start_health_server()
     asyncio.create_task(auto_verify_task())
 
-    logger.info("ZapUPI Auto-Verifier Daemon Running in Background.")
+    logger.info("FAM PAY API auto-verifier daemon running in background.")
     logger.info("🚀 CORE SYSTEM IS FULLY OPERATIONAL...")
 
     try:
