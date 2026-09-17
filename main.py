@@ -52,13 +52,13 @@ FIXED_CATEGORIES = [
 # ==============================================================================
 DEFAULT_EMOJIS = {
     'product_store': '6163205892834598715',          # already premium
-    'profile': '6091248818211265593',                # new premium
+    'profile': '6091123564080016936',                # new premium
     'add_balance': '6091231303334633875',            # new premium
     'history': '6176966310920983412',                # new premium
     'referral': '6267115986541877538',               # new premium
     'support': '6147796340450533061',                # new premium
     'ludo_spin': '6091150429100447967',              # new premium
-    'back': '5409357944619802453',                   # new premium
+    'back': '5240177683886784793',                   # new premium
     'upi': '5807750375033278838',                    # new premium
     'binance': '5843689746538173057',                # new premium
     'reseller': '6091232896767500693',               # new premium
@@ -431,8 +431,8 @@ def init_db() -> None:
         ('binance_secret', ''),
         ('binance_address', ''),
         ('vip_status', 'OFF'),
-        ('reseller_setup_fee', '300.0'),
-        ('reseller_min_balance', '300.0'),
+        ('reseller_setup_fee', '200.0'),
+        ('reseller_min_balance', '500.0'),
         ('migration_done', '0'),
         ('support_telegram', 'https://t.me/YourSupport'),
         ('support_whatsapp', 'https://wa.me/YourNumber'),
@@ -1129,7 +1129,7 @@ async def create_fampay_order(user_id: int, inr_amount: float, message_obj: Mess
         "amount": round(float(inr_amount), 2),
         "customer_name": customer_name,
         "customer_phone": mobile,
-        "redirect_url": f"https://t.me/{BOT_USERNAME}?start=v_{order_id}"
+        "redirect_url": f"https://t.me/{BOT_USERNAME.lstrip('@')}?start=v_{order_id}"
     }
     headers = {"Content-Type": "application/json", "X-Api-Key": api_key, "Accept": "application/json"}
     try:
@@ -1141,6 +1141,7 @@ async def create_fampay_order(user_id: int, inr_amount: float, message_obj: Mess
                     return await message_obj.edit_text(f"❌ <b>FAM PAY Error:</b> {data.get('message', f'HTTP {resp.status}')}", reply_markup=back_kb("gateway_inr"), parse_mode='HTML')
                 info = data.get("data", {}) or {}
                 payment_url = info.get("checkout_url") or info.get("payment_url") or info.get("upi_intent")
+                qr_url = info.get("qr_url") or info.get("qr_code_url") or info.get("qr")
                 gateway_order_id = info.get("order_id")
                 if gateway_order_id and gateway_order_id != order_id:
                     db_query("UPDATE transactions SET order_id=? WHERE order_id=?", (gateway_order_id, order_id))
@@ -1156,8 +1157,28 @@ async def create_fampay_order(user_id: int, inr_amount: float, message_obj: Mess
         [InlineKeyboardButton(text="🔄 Check Payment", callback_data=f"verify_{order_id}", style="primary")],
         [InlineKeyboardButton(text="❌ Cancel", callback_data="menu_add_balance", icon_custom_emoji_id=get_emoji_icon("back"), style="danger")]
     ])
-    text = (f"🧾 <b>FAM PAY PAYMENT CREATED</b>\n\n💰 Amount: <b>₹{inr_amount:.2f}</b>\n🆔 Order ID: <code>{order_id}</code>\n\n1️⃣ Tap <b>Pay via FAM PAY</b>.\n2️⃣ Complete payment.\n3️⃣ Balance is <b>auto-verified</b> in the background.\n\n⏳ Payment session is time-limited.")
+    text = (f"🧾 <b>FAM PAY PAYMENT CREATED</b>\n\n💰 Amount: <b>₹{inr_amount:.2f}</b>\n🆔 Order ID: <code>{order_id}</code>\n\n📷 <b>Scan the QR code below</b> or tap <b>Pay via FAM PAY</b>.\n2️⃣ Complete payment.\n3️⃣ Balance is <b>auto-verified</b> in the background.\n\n⏳ Payment session is time-limited.")
     log_activity(user_id, "GENERATE_FAMPAY_INVOICE", f"Amount: {inr_amount}, Order ID: {order_id}")
+
+    # Show the gateway QR directly in Telegram when FamGateway returns qr_url.
+    if qr_url:
+        try:
+            await message_obj.delete()
+        except Exception:
+            pass
+        try:
+            await bot.send_photo(
+                chat_id=user_id,
+                photo=qr_url,
+                caption=text,
+                reply_markup=kb,
+                parse_mode='HTML'
+            )
+            return
+        except Exception as e:
+            logger.warning(f"FAM PAY QR could not be sent: {e}")
+
+    # Fallback: keep the normal payment button if the gateway did not return a QR.
     await message_obj.edit_text(text, reply_markup=kb, parse_mode='HTML')
 
 @dp.callback_query(F.data.startswith("verify_"))
